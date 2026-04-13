@@ -26,6 +26,7 @@ export default function InterviewScreen(): React.JSX.Element {
     addTranscription,
     setCurrentInterim,
     addQAPair,
+    updateQAPairAnswer,
     setProcessing,
     setError,
     setCodeSuggestion,
@@ -58,7 +59,7 @@ export default function InterviewScreen(): React.JSX.Element {
     }
   }, [codeSuggestion?.suggestion])
 
-  // Send finalized text to AI — queues if already processing
+  // Send finalized text to AI — streams answer chunks into the QA pair in real-time
   const sendToAI = useCallback(
     async (text: string) => {
       console.log('[Pipeline STAGE 8] sendToAI called, text:', JSON.stringify(text), '| isProcessing:', isProcessingRef.current, '| queueLen:', sendQueueRef.current.length)
@@ -71,18 +72,27 @@ export default function InterviewScreen(): React.JSX.Element {
       isProcessingRef.current = true
       setProcessing(true)
       setError(null)
-      console.log('[Pipeline STAGE 8] → api.interviewAsk:', JSON.stringify(text))
+
+      const id = crypto.randomUUID()
+      addQAPair({ id, question: text.trim(), answer: '', timestamp: Date.now() })
+
+      let accumulated = ''
+      console.log('[Pipeline STAGE 8] → api.interviewAskStream:', JSON.stringify(text))
       try {
-        const res = await api.interviewAsk(text)
-        console.log('[Pipeline STAGE 8] ← answer received, length:', res.answer?.length)
-        addQAPair({
-          id: crypto.randomUUID(),
-          question: res.question,
-          answer: res.answer,
-          timestamp: Date.now()
-        })
+        await api.interviewAskStream(
+          text,
+          (chunk) => {
+            accumulated += chunk
+            updateQAPairAnswer(id, accumulated)
+          },
+          (err) => {
+            console.log('[Pipeline STAGE 8] ✗ stream error:', err)
+            setError(err)
+          }
+        )
+        console.log('[Pipeline STAGE 8] ← stream complete, total length:', accumulated.length)
       } catch (err) {
-        console.log('[Pipeline STAGE 8] ✗ interviewAsk error:', (err as Error).message)
+        console.log('[Pipeline STAGE 8] ✗ interviewAskStream threw:', (err as Error).message)
         setError((err as Error).message)
       } finally {
         setProcessing(false)
@@ -91,7 +101,7 @@ export default function InterviewScreen(): React.JSX.Element {
         if (next) { console.log('[Pipeline STAGE 8] processing queued item'); setTimeout(() => sendToAI(next), 0) }
       }
     },
-    [addQAPair, setProcessing, setError]
+    [addQAPair, updateQAPairAnswer, setProcessing, setError]
   )
 
   // Handle final transcript — server sends complete utterance on UtteranceEnd, send straight to AI
@@ -332,6 +342,9 @@ export default function InterviewScreen(): React.JSX.Element {
                   <p className="text-[10px] font-semibold text-brand-400/60 uppercase tracking-widest mb-1.5">Answer</p>
                   <div className="text-sm text-gray-100 leading-relaxed whitespace-pre-wrap">
                     {latestQA.answer}
+                    {isProcessing && (
+                      <span className="inline-block w-0.5 h-[1em] bg-brand-400 ml-0.5 animate-pulse" />
+                    )}
                   </div>
                 </div>
               </div>

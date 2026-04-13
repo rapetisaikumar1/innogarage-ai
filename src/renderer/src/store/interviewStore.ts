@@ -43,6 +43,7 @@ interface InterviewState {
   addTranscription: (text: string) => void
   setCurrentInterim: (text: string) => void
   addQAPair: (pair: QAPair) => void
+  updateQAPairAnswer: (id: string, answer: string) => void
   setProcessing: (processing: boolean) => void
   setError: (error: string | null) => void
 
@@ -79,6 +80,8 @@ export const useInterviewStore = create<InterviewState>((set) => ({
   setCurrentInterim: (text) => set({ currentInterim: text }),
   addQAPair: (pair) =>
     set((state) => ({ qaPairs: [pair, ...state.qaPairs] })),
+  updateQAPairAnswer: (id, answer) =>
+    set((state) => ({ qaPairs: state.qaPairs.map((p) => (p.id === id ? { ...p, answer } : p)) })),
   setProcessing: (processing) => set({ isProcessing: processing }),
   setError: (error) => set({ error }),
 

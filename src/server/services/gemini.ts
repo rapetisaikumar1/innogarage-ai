@@ -198,6 +198,19 @@ export async function generateAnswer(userId: string, question: string): Promise<
   return result.response.text()
 }
 
+export async function* generateAnswerStream(userId: string, question: string): AsyncGenerator<string> {
+  const session = userSessions.get(userId)
+  if (!session) {
+    throw new Error('No active interview session. Please start an interview first.')
+  }
+
+  const streamResult = await retryWithBackoff(() => session.sendMessageStream(question))
+  for await (const chunk of streamResult.stream) {
+    const text = chunk.text()
+    if (text) yield text
+  }
+}
+
 export function endUserSession(userId: string): void {
   userSessions.delete(userId)
 }
