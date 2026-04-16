@@ -14,7 +14,7 @@ const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 })
 
 async function start(): Promise<void> {
   await app.register(cors, {
-    origin: true,
+    origin: '*',
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
   })
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } })

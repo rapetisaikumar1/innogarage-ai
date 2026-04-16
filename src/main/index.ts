@@ -140,13 +140,33 @@ type GoogleAuthResult =
   | { type: 'login'; token: string; user: { id: string; name: string; email: string; phone: string | null } }
   | { type: 'verify'; email: string; name: string; googleId: string }
 
+const RAILWAY_CALLBACK = 'https://innogarage-ai-production.up.railway.app/auth/google/callback'
+
+// Shared helper: intercepts Google OAuth callback in a modal window.
+// Handles both will-redirect (server 302) and did-navigate (window loads the URL).
+function interceptGoogleCallback(
+  authWindow: BrowserWindow,
+  onUrl: (url: string) => void
+): void {
+  authWindow.webContents.on('will-redirect', (_event, redirectUrl) => {
+    if (redirectUrl.startsWith(RAILWAY_CALLBACK)) {
+      _event.preventDefault()
+      onUrl(redirectUrl)
+    }
+  })
+  authWindow.webContents.on('did-navigate', (_event, redirectUrl) => {
+    if (redirectUrl.startsWith(RAILWAY_CALLBACK)) {
+      onUrl(redirectUrl)
+    }
+  })
+}
+
 // In-app Google OAuth — opens a modal BrowserWindow, intercepts callback
 ipcMain.handle(
   'auth:google',
   (): Promise<GoogleAuthResult> => {
     return new Promise(async (resolve, reject) => {
       let settled = false
-
       const settle = (fn: () => void): void => {
         if (settled) return
         settled = true
@@ -164,40 +184,23 @@ ipcMain.handle(
           modal: true,
           show: false,
           autoHideMenuBar: true,
-          webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-            sandbox: true
-          }
+          webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true }
         })
 
         authWindow.once('ready-to-show', () => authWindow.show())
-
-        authWindow.on('closed', () => {
-          settle(() => reject(new Error('Authentication cancelled')))
-        })
-
+        authWindow.on('closed', () => settle(() => reject(new Error('Authentication cancelled'))))
         injectBackButton(authWindow)
 
-        authWindow.webContents.on('will-redirect', (_event, redirectUrl) => {
-          if (redirectUrl.startsWith('https://innogarage-ai-production.up.railway.app/auth/google/callback')) {
-            _event.preventDefault()
-            net
-              .fetch(redirectUrl)
-              .then(async (r) => {
-                const data = await r.json()
-                if (!r.ok) throw new Error((data as { error?: string }).error || 'Google sign-in failed')
-                return data
-              })
-              .then((data) => {
-                settle(() => resolve(data as GoogleAuthResult))
-                authWindow.destroy()
-              })
-              .catch((err) => {
-                settle(() => reject(err))
-                authWindow.destroy()
-              })
-          }
+        interceptGoogleCallback(authWindow, (callbackUrl) => {
+          net
+            .fetch(callbackUrl)
+            .then(async (r) => {
+              const data = await r.json()
+              if (!r.ok) throw new Error((data as { error?: string }).error || 'Google sign-in failed')
+              return data
+            })
+            .then((data) => { settle(() => resolve(data as GoogleAuthResult)); authWindow.destroy() })
+            .catch((err) => { settle(() => reject(err)); authWindow.destroy() })
         })
 
         authWindow.loadURL(url)
@@ -209,13 +212,11 @@ ipcMain.handle(
 )
 
 // In-app Google identity verify — opens Google sign-in, returns {email, googleId, name} WITHOUT touching DB
-// Used during registration to verify the user owns the email they entered
 ipcMain.handle(
   'auth:google-verify',
   (_event, loginHint?: string): Promise<{ email: string; googleId: string; name: string }> => {
     return new Promise(async (resolve, reject) => {
       let settled = false
-
       const settle = (fn: () => void): void => {
         if (settled) return
         settled = true
@@ -234,42 +235,20 @@ ipcMain.handle(
           modal: true,
           show: false,
           autoHideMenuBar: true,
-          webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-            sandbox: true
-          }
+          webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true }
         })
 
         authWindow.once('ready-to-show', () => authWindow.show())
-
-        authWindow.on('closed', () => {
-          settle(() => reject(new Error('Authentication cancelled')))
-        })
-
+        authWindow.on('closed', () => settle(() => reject(new Error('Authentication cancelled'))))
         injectBackButton(authWindow)
 
-        // Intercept the Google callback and redirect to /identity instead of /callback
-        authWindow.webContents.on('will-redirect', (_event, redirectUrl) => {
-          if (redirectUrl.startsWith('https://innogarage-ai-production.up.railway.app/auth/google/callback')) {
-            _event.preventDefault()
-            // Swap callback → identity to get Google user info without DB ops
-            const identityUrl = redirectUrl.replace(
-              '/auth/google/callback',
-              '/auth/google/identity'
-            )
-            net
-              .fetch(identityUrl)
-              .then((r) => r.json())
-              .then((data) => {
-                settle(() => resolve(data as { email: string; googleId: string; name: string }))
-                authWindow.destroy()
-              })
-              .catch((err) => {
-                settle(() => reject(err))
-                authWindow.destroy()
-              })
-          }
+        interceptGoogleCallback(authWindow, (callbackUrl) => {
+          const identityUrl = callbackUrl.replace('/auth/google/callback', '/auth/google/identity')
+          net
+            .fetch(identityUrl)
+            .then((r) => r.json())
+            .then((data) => { settle(() => resolve(data as { email: string; googleId: string; name: string })); authWindow.destroy() })
+            .catch((err) => { settle(() => reject(err)); authWindow.destroy() })
         })
 
         authWindow.loadURL(url)
