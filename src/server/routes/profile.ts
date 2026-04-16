@@ -2,7 +2,6 @@ import { FastifyInstance, FastifyRequest } from 'fastify'
 import { eq } from 'drizzle-orm'
 import https from 'https'
 import http from 'http'
-import pdfParse from 'pdf-parse'
 import mammoth from 'mammoth'
 import { getDb } from '../db'
 import { profiles, users, plans } from '../db/schema'
@@ -16,6 +15,7 @@ interface AuthRequest extends FastifyRequest {
 async function extractResumeText(buffer: Buffer, mimeType: string): Promise<string> {
   try {
     if (mimeType === 'application/pdf') {
+      const { default: pdfParse } = await import('pdf-parse')
       const result = await pdfParse(buffer)
       return result.text.trim()
     }

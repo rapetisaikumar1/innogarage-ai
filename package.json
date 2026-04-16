@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "AI-Powered Interview Assistant Desktop Application",
   "main": "./out/main/index.js",
+  "engines": {
+    "node": ">=20"
+  },
   "author": "innogarage.ai",
   "homepage": "https://innogarage.ai",
   "scripts": {
