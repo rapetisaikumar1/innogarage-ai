@@ -10,8 +10,8 @@
  * the final transcript fires immediately — no silence gate, no blob encoding.
  */
 
-const WS_URL   = 'ws://localhost:3847'
-export const BASE_URL = 'http://localhost:3847'
+const WS_URL   = 'wss://innogarage-ai-production.up.railway.app'
+export const BASE_URL = 'https://innogarage-ai-production.up.railway.app'
 const DEBUG    = true
 const TARGET_SAMPLE_RATE = 16000  // Deepgram linear16 expects 16kHz
 

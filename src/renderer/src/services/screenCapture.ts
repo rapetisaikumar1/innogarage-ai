@@ -12,7 +12,7 @@
 
 const CAPTURE_INTERVAL_MS = 2000  // 2s capture cadence
 const JPEG_QUALITY = 0.72          // Sharp enough for code OCR; ~20% smaller than 0.8
-const BASE_URL = 'http://localhost:3847'
+const BASE_URL = 'https://innogarage-ai-production.up.railway.app'
 const DEBUG = true
 
 // ── Media state ───────────────────────────────────────────────────────────────

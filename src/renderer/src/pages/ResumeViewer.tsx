@@ -3,7 +3,7 @@ import { ArrowLeft, Download } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { useProfileStore } from '../store/profileStore'
 
-const BASE_URL = 'http://localhost:3847'
+const BASE_URL = 'https://innogarage-ai-production.up.railway.app'
 
 export default function ResumeViewer(): React.JSX.Element {
   const navigate = useNavigate()

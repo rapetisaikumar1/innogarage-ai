@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:3847'
+const BASE_URL = 'https://innogarage-ai-production.up.railway.app'
 
 async function request<T>(
   endpoint: string,

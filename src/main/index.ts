@@ -1,44 +1,12 @@
 import { app, shell, BrowserWindow, ipcMain, net, desktopCapturer } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { spawn, ChildProcess } from 'child_process'
 import icon from '../../resources/icon.png?asset'
 
 // Ensure AudioContext.resume() works from non-gesture context (useEffect)
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 let mainWindow: BrowserWindow | null = null
-let serverProcess: ChildProcess | null = null
-
-function getProjectRoot(): string {
-  // In dev, __dirname is out/main, so go up 2 levels
-  // In production, adjust accordingly
-  return join(__dirname, '../../')
-}
-
-function startServer(): void {
-  const projectRoot = getProjectRoot()
-  const serverPath = join(projectRoot, 'src/server/index.ts')
-
-  serverProcess = spawn('npx', ['tsx', serverPath], {
-    cwd: projectRoot,
-    env: { ...process.env },
-    stdio: 'pipe',
-    shell: true
-  })
-
-  serverProcess.stdout?.on('data', (data) => console.log(`[server] ${data}`))
-  serverProcess.stderr?.on('data', (data) => {
-    const msg = data.toString()
-    // Filter out normal startup logs
-    if (!msg.includes('ExperimentalWarning')) {
-      console.error(`[server] ${msg}`)
-    }
-  })
-  serverProcess.on('exit', (code) => {
-    console.log(`[server] Process exited with code ${code}`)
-  })
-}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -50,7 +18,7 @@ function createWindow(): void {
     frame: false,
     transparent: true,
     autoHideMenuBar: true,
-    ...(process.platform === 'linux' ? { icon } : {}),
+    ...(process.platform !== 'darwin' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
@@ -87,7 +55,10 @@ ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized())
 ipcMain.on('window:setAlwaysOnTop', (_event, flag: boolean) => {
   if (mainWindow) {
     mainWindow.setAlwaysOnTop(flag, 'screen-saver')
-    mainWindow.setVisibleOnAllWorkspaces(flag, { visibleOnFullScreen: true })
+    // setVisibleOnAllWorkspaces is macOS/Linux only — not available on Windows
+    if (process.platform !== 'win32') {
+      mainWindow.setVisibleOnAllWorkspaces(flag, { visibleOnFullScreen: true })
+    }
   }
 })
 
@@ -183,7 +154,7 @@ ipcMain.handle(
       }
 
       try {
-        const urlRes = await net.fetch('http://localhost:3847/auth/google/url')
+        const urlRes = await net.fetch('https://innogarage-ai-production.up.railway.app/auth/google/url')
         const { url } = (await urlRes.json()) as { url: string }
 
         const authWindow = new BrowserWindow({
@@ -209,7 +180,7 @@ ipcMain.handle(
         injectBackButton(authWindow)
 
         authWindow.webContents.on('will-redirect', (_event, redirectUrl) => {
-          if (redirectUrl.startsWith('http://localhost:3847/auth/google/callback')) {
+          if (redirectUrl.startsWith('https://innogarage-ai-production.up.railway.app/auth/google/callback')) {
             _event.preventDefault()
             net
               .fetch(redirectUrl)
@@ -253,7 +224,7 @@ ipcMain.handle(
 
       try {
         const hintParam = loginHint ? `?hint=${encodeURIComponent(loginHint)}` : ''
-        const urlRes = await net.fetch(`http://localhost:3847/auth/google/url${hintParam}`)
+        const urlRes = await net.fetch(`https://innogarage-ai-production.up.railway.app/auth/google/url${hintParam}`)
         const { url } = (await urlRes.json()) as { url: string }
 
         const authWindow = new BrowserWindow({
@@ -280,7 +251,7 @@ ipcMain.handle(
 
         // Intercept the Google callback and redirect to /identity instead of /callback
         authWindow.webContents.on('will-redirect', (_event, redirectUrl) => {
-          if (redirectUrl.startsWith('http://localhost:3847/auth/google/callback')) {
+          if (redirectUrl.startsWith('https://innogarage-ai-production.up.railway.app/auth/google/callback')) {
             _event.preventDefault()
             // Swap callback → identity to get Google user info without DB ops
             const identityUrl = redirectUrl.replace(
@@ -316,7 +287,6 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  startServer()
   createWindow()
 
   app.on('activate', function () {
@@ -331,8 +301,4 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  if (serverProcess) {
-    serverProcess.kill()
-    serverProcess = null
-  }
 })
