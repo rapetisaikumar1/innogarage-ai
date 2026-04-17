@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, net, desktopCapturer } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, net, desktopCapturer, systemPreferences } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -88,6 +88,13 @@ ipcMain.handle('download-file', (_event, url: string) => {
 // Desktop audio capture — returns source ID for system audio
 ipcMain.handle('audio:get-desktop-source-id', async () => {
   try {
+    // Check macOS screen recording permission status first
+    const status = systemPreferences.getMediaAccessStatus('screen')
+    if (status !== 'granted') {
+      // Calling getSources triggers the macOS permission prompt / opens System Preferences
+      await desktopCapturer.getSources({ types: ['screen'] })
+      return null
+    }
     const sources = await desktopCapturer.getSources({ types: ['screen'] })
     if (sources.length > 0) {
       return sources[0].id
@@ -96,6 +103,11 @@ ipcMain.handle('audio:get-desktop-source-id', async () => {
   } catch {
     return null
   }
+})
+
+// Returns current macOS screen recording permission status
+ipcMain.handle('audio:get-screen-permission-status', () => {
+  return systemPreferences.getMediaAccessStatus('screen')
 })
 
 // Injects a floating "← Cancel" button into a Google OAuth BrowserWindow.

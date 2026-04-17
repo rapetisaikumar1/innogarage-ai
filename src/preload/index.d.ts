@@ -14,6 +14,7 @@ interface WindowAPI {
   >
   googleVerify: (loginHint?: string) => Promise<{ email: string; googleId: string; name: string }>
   getDesktopAudioSourceId: () => Promise<string | null>
+  getScreenPermissionStatus: () => Promise<string>
   setAlwaysOnTop: (flag: boolean) => void
   setOverlayMode: (flag: boolean) => void
   setContentProtection: (flag: boolean) => void

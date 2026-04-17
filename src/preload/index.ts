@@ -17,6 +17,8 @@ const api = {
     ipcRenderer.invoke('auth:google-verify', loginHint),
   getDesktopAudioSourceId: (): Promise<string | null> =>
     ipcRenderer.invoke('audio:get-desktop-source-id'),
+  getScreenPermissionStatus: (): Promise<string> =>
+    ipcRenderer.invoke('audio:get-screen-permission-status'),
   setAlwaysOnTop: (flag: boolean): void => ipcRenderer.send('window:setAlwaysOnTop', flag),
   setOverlayMode: (flag: boolean): void => ipcRenderer.send('window:setOverlayMode', flag),
   setContentProtection: (flag: boolean): void => ipcRenderer.send('window:setContentProtection', flag)

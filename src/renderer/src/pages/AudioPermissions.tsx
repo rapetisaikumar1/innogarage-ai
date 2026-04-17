@@ -50,9 +50,14 @@ export default function AudioPermissions(): React.JSX.Element {
     setSystemLoading(true)
     setSystemError('')
     try {
+      const status = await window.api.getScreenPermissionStatus()
       const sourceId = await window.api.getDesktopAudioSourceId()
       if (!sourceId) {
-        setSystemError('No screen source found. Enable Screen Recording in System Settings > Privacy > Screen Recording.')
+        if (status === 'denied') {
+          setSystemError('Permission denied. Go to System Settings > Privacy & Security > Screen Recording, enable innogarage.ai, then restart the app.')
+        } else {
+          setSystemError('Screen Recording permission not granted. Open System Settings > Privacy & Security > Screen Recording, enable innogarage.ai, then restart the app.')
+        }
         setSystemGranted(false)
         return
       }
@@ -94,9 +99,14 @@ export default function AudioPermissions(): React.JSX.Element {
     setScreenLoading(true)
     setScreenError('')
     try {
+      const status = await window.api.getScreenPermissionStatus()
       const sourceId = await window.api.getDesktopAudioSourceId()
       if (!sourceId) {
-        setScreenError('No screen source found. Enable Screen Recording in System Settings > Privacy > Screen Recording.')
+        if (status === 'denied') {
+          setScreenError('Permission denied. Go to System Settings > Privacy & Security > Screen Recording, enable innogarage.ai, then restart the app.')
+        } else {
+          setScreenError('Screen Recording permission not granted. Open System Settings > Privacy & Security > Screen Recording, enable innogarage.ai, then restart the app.')
+        }
         setScreenGranted(false)
         return
       }
