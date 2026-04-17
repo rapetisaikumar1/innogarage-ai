@@ -88,18 +88,24 @@ ipcMain.handle('download-file', (_event, url: string) => {
 })
 
 // Desktop audio capture — returns source ID for system audio
+// Retries up to 3 times with a short delay to handle race after granting permission
 ipcMain.handle('audio:get-desktop-source-id', async () => {
-  try {
-    const sources = await desktopCapturer.getSources({ types: ['screen'] })
-    console.log('[desktopCapturer] sources found:', sources.length, sources.map(s => s.name))
-    if (sources.length > 0) {
-      return sources[0].id
+  const maxAttempts = 3
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen'] })
+      console.log(`[desktopCapturer] attempt ${i + 1}: sources found:`, sources.length, sources.map(s => s.name))
+      if (sources.length > 0) {
+        return sources[0].id
+      }
+    } catch (err) {
+      console.error(`[desktopCapturer] attempt ${i + 1} error:`, err)
     }
-    return null
-  } catch (err) {
-    console.error('[desktopCapturer] getSources error:', err)
-    return null
+    if (i < maxAttempts - 1) {
+      await new Promise(r => setTimeout(r, 500))
+    }
   }
+  return null
 })
 
 // Returns current macOS screen recording permission status

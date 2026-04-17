@@ -19,6 +19,10 @@ const SCREEN_DENIED_MSG = isMac
     ? 'Windows Settings has been opened. Allow screen capture for innogarage.ai under Privacy & Security, then fully close and reopen the app.'
     : 'Enable screen recording permission in your system settings, then restart the app.'
 
+const SCREEN_STALE_MSG = isMac
+  ? 'Permission appears enabled but is outdated (app was re-installed). Open System Settings > Privacy & Security > Screen & System Audio Recording, toggle OFF innogarage.ai, then toggle it back ON, fully QUIT this app (Cmd+Q), and reopen it.'
+  : 'Permission appears enabled but is outdated. Please remove and re-add the screen recording permission for innogarage.ai in your system settings, then restart the app.'
+
 const MIC_DENIED_MSG = isMac
   ? 'Permission denied. Open System Settings > Privacy & Security > Microphone and enable innogarage.ai.'
   : isWin
@@ -73,9 +77,16 @@ export default function AudioPermissions(): React.JSX.Element {
     try {
       const sourceId = await window.api.getDesktopAudioSourceId()
       if (!sourceId) {
-        // Auto-open System Settings so user doesn't have to navigate manually
-        await window.api.openScreenSettings()
-        setSystemError(SCREEN_DENIED_MSG)
+        // Check OS-level permission to distinguish "not granted" from "stale TCC"
+        const status = await window.api.getScreenPermissionStatus()
+        if (status === 'granted') {
+          // OS says granted but desktopCapturer returns empty → stale TCC entry
+          await window.api.openScreenSettings()
+          setSystemError(SCREEN_STALE_MSG)
+        } else {
+          await window.api.openScreenSettings()
+          setSystemError(SCREEN_DENIED_MSG)
+        }
         setSystemGranted(false)
         return
       }
@@ -120,8 +131,14 @@ export default function AudioPermissions(): React.JSX.Element {
     try {
       const sourceId = await window.api.getDesktopAudioSourceId()
       if (!sourceId) {
-        await window.api.openScreenSettings()
-        setScreenError(SCREEN_DENIED_MSG)
+        const status = await window.api.getScreenPermissionStatus()
+        if (status === 'granted') {
+          await window.api.openScreenSettings()
+          setScreenError(SCREEN_STALE_MSG)
+        } else {
+          await window.api.openScreenSettings()
+          setScreenError(SCREEN_DENIED_MSG)
+        }
         setScreenGranted(false)
         return
       }
