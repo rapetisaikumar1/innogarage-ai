@@ -1,22 +1,30 @@
-import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
 
-let _resend: Resend | null = null
+let _transporter: nodemailer.Transporter | null = null
 
-function getResend(): Resend {
-  if (!_resend) {
-    _resend = new Resend(process.env.RESEND_API_KEY)
+function getTransporter(): nodemailer.Transporter {
+  if (!_transporter) {
+    _transporter = nodemailer.createTransport({
+      host: 'smtp.sendgrid.net',
+      port: 2525,
+      secure: false,
+      auth: {
+        user: 'apikey',
+        pass: process.env.SENDGRID_SMTP_PASS
+      }
+    })
   }
-  return _resend
+  return _transporter
 }
 
-const FROM = 'innogarage.ai <onboarding@resend.dev>'
+const FROM = `"innogarage.ai" <${process.env.SENDGRID_FROM_EMAIL ?? 'noreply@innogarage.ai'}>`
 
 export async function sendVerificationEmail(
   email: string,
   code: string,
   name: string
 ): Promise<void> {
-  const { error } = await getResend().emails.send({
+  await getTransporter().sendMail({
     from: FROM,
     to: email,
     subject: 'Verify your innogarage.ai account',
@@ -32,11 +40,10 @@ export async function sendVerificationEmail(
       </div>
     `
   })
-  if (error) throw new Error(error.message)
 }
 
 export async function sendSigninOtpEmail(email: string, code: string, name: string): Promise<void> {
-  const { error } = await getResend().emails.send({
+  await getTransporter().sendMail({
     from: FROM,
     to: email,
     subject: 'Your innogarage.ai sign-in code',
@@ -52,11 +59,10 @@ export async function sendSigninOtpEmail(email: string, code: string, name: stri
       </div>
     `
   })
-  if (error) throw new Error(error.message)
 }
 
 export async function sendPasswordResetEmail(email: string, code: string): Promise<void> {
-  const { error } = await getResend().emails.send({
+  await getTransporter().sendMail({
     from: FROM,
     to: email,
     subject: 'Reset your innogarage.ai password',
@@ -71,6 +77,5 @@ export async function sendPasswordResetEmail(email: string, code: string): Promi
       </div>
     `
   })
-  if (error) throw new Error(error.message)
 }
 

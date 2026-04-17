@@ -7,7 +7,7 @@ import { authRoutes } from './routes/auth'
 import { profileRoutes } from './routes/profile'
 import { planRoutes } from './routes/plan'
 import { interviewRoutes } from './routes/interview'
-import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
 
 config()
 
@@ -26,22 +26,26 @@ async function start(): Promise<void> {
   await app.register(planRoutes)
   await app.register(interviewRoutes)
 
-  // Temporary debug route — checks Resend API key and sends a test email
+  // Temporary debug route — tests SendGrid SMTP on port 2525
   app.get('/debug/email', async (_req, reply) => {
-    const apiKey = process.env.RESEND_API_KEY
-    if (!apiKey) {
-      return reply.send({ ok: false, error: 'Missing RESEND_API_KEY env var' })
+    const pass = process.env.SENDGRID_SMTP_PASS
+    if (!pass) {
+      return reply.send({ ok: false, error: 'Missing SENDGRID_SMTP_PASS env var' })
     }
     try {
-      const resend = new Resend(apiKey)
-      const { error } = await resend.emails.send({
-        from: 'innogarage.ai <onboarding@resend.dev>',
+      const t = nodemailer.createTransport({
+        host: 'smtp.sendgrid.net',
+        port: 2525,
+        secure: false,
+        auth: { user: 'apikey', pass }
+      })
+      await t.sendMail({
+        from: `"innogarage.ai" <${process.env.SENDGRID_FROM_EMAIL ?? 'noreply@innogarage.ai'}>`,
         to: 'rapetisaikumar1999@gmail.com',
         subject: 'Railway email test',
-        text: 'Railway Resend API is working.'
+        text: 'Railway SendGrid SMTP is working.'
       })
-      if (error) return reply.send({ ok: false, error: error.message })
-      return { ok: true, apiKey: `${apiKey.slice(0, 8)}...` }
+      return { ok: true, host: 'smtp.sendgrid.net', port: 2525 }
     } catch (err: unknown) {
       return reply.send({ ok: false, error: (err as Error).message })
     }
