@@ -34,7 +34,7 @@ async function start(): Promise<void> {
       return reply.send({ ok: false, error: 'Missing env vars', GMAIL_USER: user ?? 'MISSING', GMAIL_APP_PASSWORD: pass ? `${pass.length} chars` : 'MISSING' })
     }
     try {
-      const t = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 587, secure: false, auth: { user, pass } })
+      const t = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 465, secure: true, connectionTimeout: 10000, greetingTimeout: 10000, auth: { user, pass } })
       await t.sendMail({ from: `"innogarage.ai" <${user}>`, to: user, subject: 'Railway email test', text: 'Railway SMTP is working.' })
       return { ok: true, GMAIL_USER: user, GMAIL_APP_PASSWORD: `${pass.length} chars` }
     } catch (err: unknown) {
