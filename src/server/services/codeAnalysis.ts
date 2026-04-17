@@ -135,11 +135,20 @@ export async function analyzeScreenContent(
     throw new Error('No active code analysis session. Please start an interview first.')
   }
 
+  // Strip data URI prefix if present (e.g. "data:image/jpeg;base64,...")
+  let imageData = base64Image
+  let mimeType = 'image/jpeg'
+  const dataUriMatch = base64Image.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/)
+  if (dataUriMatch) {
+    mimeType = dataUriMatch[1]
+    imageData = dataUriMatch[2]
+  }
+
   const result = await model.generateContent([
     {
       inlineData: {
-        mimeType: 'image/jpeg',
-        data: base64Image
+        mimeType,
+        data: imageData
       }
     },
     {

@@ -6,6 +6,12 @@ import icon from '../../resources/icon.png?asset'
 // Ensure AudioContext.resume() works from non-gesture context (useEffect)
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
+// Windows: transparent windows require disabling hardware acceleration to avoid
+// blank/invisible window on certain GPU drivers and older Windows builds
+if (process.platform === 'win32') {
+  app.disableHardwareAcceleration()
+}
+
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {
@@ -20,7 +26,6 @@ function createWindow(): void {
     backgroundColor: '#00000000',
     autoHideMenuBar: true,
     ...(process.platform !== 'darwin' ? { icon } : {}),
-    ...(process.platform === 'win32' ? { titleBarStyle: 'hidden' } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
@@ -66,7 +71,7 @@ ipcMain.on('window:setAlwaysOnTop', (_event, flag: boolean) => {
 
 ipcMain.on('window:setOverlayMode', (_event, flag: boolean) => {
   if (mainWindow) {
-    mainWindow.setBackgroundColor(flag ? '#00000000' : '#00000000')
+    mainWindow.setBackgroundColor(flag ? '#00000000' : '#1a1a2e')
     // Hide this window from screen captures when overlay is active.
     // Prevents Gemini from reading our own Q&A panel and returning it as a code suggestion.
     mainWindow.setContentProtection(flag)
