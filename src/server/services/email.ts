@@ -1,30 +1,18 @@
-import nodemailer from 'nodemailer'
+import sgMail from '@sendgrid/mail'
 
-let _transporter: nodemailer.Transporter | null = null
-
-function getTransporter(): nodemailer.Transporter {
-  if (!_transporter) {
-    _transporter = nodemailer.createTransport({
-      host: 'smtp.sendgrid.net',
-      port: 2525,
-      secure: false,
-      auth: {
-        user: 'apikey',
-        pass: process.env.SENDGRID_SMTP_PASS
-      }
-    })
-  }
-  return _transporter
+function getSgMail(): typeof sgMail {
+  sgMail.setApiKey(process.env.SENDGRID_SMTP_PASS!)
+  return sgMail
 }
 
-const FROM = `"innogarage.ai" <${process.env.SENDGRID_FROM_EMAIL ?? 'noreply@innogarage.ai'}>`
+const FROM = process.env.SENDGRID_FROM_EMAIL ?? 'noreply@innogarage.ai'
 
 export async function sendVerificationEmail(
   email: string,
   code: string,
   name: string
 ): Promise<void> {
-  await getTransporter().sendMail({
+  await getSgMail().send({
     from: FROM,
     to: email,
     subject: 'Verify your innogarage.ai account',
@@ -43,7 +31,7 @@ export async function sendVerificationEmail(
 }
 
 export async function sendSigninOtpEmail(email: string, code: string, name: string): Promise<void> {
-  await getTransporter().sendMail({
+  await getSgMail().send({
     from: FROM,
     to: email,
     subject: 'Your innogarage.ai sign-in code',
@@ -62,7 +50,7 @@ export async function sendSigninOtpEmail(email: string, code: string, name: stri
 }
 
 export async function sendPasswordResetEmail(email: string, code: string): Promise<void> {
-  await getTransporter().sendMail({
+  await getSgMail().send({
     from: FROM,
     to: email,
     subject: 'Reset your innogarage.ai password',

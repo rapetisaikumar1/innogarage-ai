@@ -7,7 +7,7 @@ import { authRoutes } from './routes/auth'
 import { profileRoutes } from './routes/profile'
 import { planRoutes } from './routes/plan'
 import { interviewRoutes } from './routes/interview'
-import nodemailer from 'nodemailer'
+import sgMail from '@sendgrid/mail'
 
 config()
 
@@ -26,28 +26,25 @@ async function start(): Promise<void> {
   await app.register(planRoutes)
   await app.register(interviewRoutes)
 
-  // Temporary debug route — tests SendGrid SMTP on port 2525
+  // Temporary debug route — tests SendGrid HTTP API
   app.get('/debug/email', async (_req, reply) => {
-    const pass = process.env.SENDGRID_SMTP_PASS
-    if (!pass) {
+    const apiKey = process.env.SENDGRID_SMTP_PASS
+    const from = process.env.SENDGRID_FROM_EMAIL ?? 'noreply@innogarage.ai'
+    if (!apiKey) {
       return reply.send({ ok: false, error: 'Missing SENDGRID_SMTP_PASS env var' })
     }
     try {
-      const t = nodemailer.createTransport({
-        host: 'smtp.sendgrid.net',
-        port: 2525,
-        secure: false,
-        auth: { user: 'apikey', pass }
-      })
-      await t.sendMail({
-        from: `"innogarage.ai" <${process.env.SENDGRID_FROM_EMAIL ?? 'noreply@innogarage.ai'}>`,
+      sgMail.setApiKey(apiKey)
+      await sgMail.send({
+        from,
         to: 'rapetisaikumar1999@gmail.com',
         subject: 'Railway email test',
-        text: 'Railway SendGrid SMTP is working.'
+        text: 'Railway SendGrid HTTP API is working.'
       })
-      return { ok: true, host: 'smtp.sendgrid.net', port: 2525 }
+      return { ok: true, provider: 'sendgrid-http', from }
     } catch (err: unknown) {
-      return reply.send({ ok: false, error: (err as Error).message })
+      const msg = (err as Error).message
+      return reply.send({ ok: false, error: msg })
     }
   })
 
