@@ -7,6 +7,8 @@ RUN npm install --ignore-scripts
 
 COPY . .
 
-EXPOSE 3847
+EXPOSE 8080
+
+ENV PORT=8080
 
 CMD ["npm", "run", "server"]
