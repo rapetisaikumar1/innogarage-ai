@@ -1,6 +1,11 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
 import jwt from 'jsonwebtoken'
 
+const JWT_SECRET = process.env.JWT_SECRET
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required')
+}
+
 interface JwtPayload {
   userId: string
   email: string
@@ -18,7 +23,7 @@ export async function authMiddleware(
 
   const token = authHeader.substring(7)
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload
+    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload
     ;(request as FastifyRequest & { user: JwtPayload }).user = decoded
   } catch {
     reply.code(401).send({ error: 'Invalid or expired token' })
@@ -26,7 +31,7 @@ export async function authMiddleware(
 }
 
 export function generateToken(userId: string, email: string): string {
-  return jwt.sign({ userId, email }, process.env.JWT_SECRET!, { expiresIn: '7d' })
+  return jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: '7d' })
 }
 
 export function generateVerificationCode(): string {
@@ -34,5 +39,5 @@ export function generateVerificationCode(): string {
 }
 
 export function verifyToken(token: string): JwtPayload {
-  return jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload
+  return jwt.verify(token, JWT_SECRET) as JwtPayload
 }

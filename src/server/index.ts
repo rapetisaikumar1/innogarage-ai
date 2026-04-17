@@ -25,28 +25,33 @@ async function start(): Promise<void> {
   await app.register(planRoutes)
   await app.register(interviewRoutes)
 
-  // Debug endpoint — test email delivery synchronously
-  app.post('/debug/test-email', async (request, reply) => {
-    const { email } = request.body as { email: string }
-    if (!email) return reply.code(400).send({ error: 'email required' })
-    try {
-      const { sendVerificationEmail } = await import('./services/email')
-      await sendVerificationEmail(email, '123456', 'Test User')
-      return { success: true, message: `Email sent to ${email}` }
-    } catch (err: unknown) {
-      const e = err as { message?: string; response?: { body?: unknown } }
-      console.error('[debug/test-email] error:', e?.response?.body || e?.message)
-      return reply.code(500).send({
-        error: e?.message,
-        details: e?.response?.body
-      })
-    }
+  // Health check — used by monitoring, load balancers, and uptime checks
+  app.get('/health', async () => {
+    return { status: 'ok', timestamp: new Date().toISOString() }
   })
 
   const port = parseInt(process.env.PORT || process.env.SERVER_PORT || '3847')
   await app.listen({ port, host: '0.0.0.0' })
   console.log(`Server running on http://localhost:${port}`)
 }
+
+// Graceful shutdown — close DB connections and active requests
+async function shutdown(signal: string): Promise<void> {
+  console.log(`[server] ${signal} received — shutting down gracefully`)
+  try {
+    await app.close()
+  } catch (err) {
+    console.error('[server] Error during shutdown:', err)
+  }
+  process.exit(0)
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'))
+process.on('SIGINT', () => shutdown('SIGINT'))
+
+// Prevent unhandled rejections from crashing the server
+process.on('unhandledRejection', (reason) => {
+  console.error('[server] Unhandled rejection:', reason)
+})
 
 start().catch((err) => {
   console.error('Failed to start server:', err)

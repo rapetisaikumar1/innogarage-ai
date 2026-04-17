@@ -255,8 +255,13 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
     const { userId } = (request as AuthRequest).user
     const { image } = request.body as { image: string }
 
-    if (!image) {
+    if (!image || typeof image !== 'string') {
       return reply.code(400).send({ error: 'image is required' })
+    }
+
+    // Reject oversized payloads early (> 5MB base64 ≈ 3.7MB raw)
+    if (image.length > 5 * 1024 * 1024) {
+      return reply.code(413).send({ error: 'Image too large' })
     }
 
     request.log.info({ imageLen: image.length }, 'Code analysis request received')

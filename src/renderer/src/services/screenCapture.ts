@@ -51,6 +51,9 @@ async function sendToAI(base64: string): Promise<void> {
   onAnalyzingChangeCb?.(true)
   dbg('Sending frame to AI — size:', Math.round(base64.length / 1024), 'KB')
 
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 30_000) // 30s max per analysis
+
   try {
     const res = await fetch(`${BASE_URL}/interview/code-suggest`, {
       method: 'POST',
@@ -58,7 +61,8 @@ async function sendToAI(base64: string): Promise<void> {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${authToken}`
       },
-      body: JSON.stringify({ image: base64 })
+      body: JSON.stringify({ image: base64 }),
+      signal: controller.signal
     })
 
     if (!res.ok) {
@@ -71,8 +75,13 @@ async function sendToAI(base64: string): Promise<void> {
     onSuggestionCb?.(result)
 
   } catch (err) {
-    dbg('AI call failed:', (err as Error).message)
+    if ((err as Error).name === 'AbortError') {
+      dbg('AI call timed out (30s)')
+    } else {
+      dbg('AI call failed:', (err as Error).message)
+    }
   } finally {
+    clearTimeout(timer)
     isAIBusy = false
     onAnalyzingChangeCb?.(false)
 

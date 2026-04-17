@@ -298,6 +298,15 @@ app.whenReady().then(() => {
 
   createWindow()
 
+  // Recover from renderer crashes by recreating the window
+  app.on('render-process-gone', (_event, _webContents, details) => {
+    console.error('[main] Renderer process gone:', details.reason)
+    if (details.reason !== 'clean-exit') {
+      mainWindow = null
+      createWindow()
+    }
+  })
+
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

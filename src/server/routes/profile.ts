@@ -1,5 +1,5 @@
 import { FastifyInstance, FastifyRequest } from 'fastify'
-import { eq } from 'drizzle-orm'
+import { eq, and, gt, desc } from 'drizzle-orm'
 import https from 'https'
 import http from 'http'
 import mammoth from 'mammoth'
@@ -42,8 +42,8 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
     const [activePlan] = await getDb()
       .select()
       .from(plans)
-      .where(eq(plans.userId, userId))
-      .orderBy(plans.createdAt)
+      .where(and(eq(plans.userId, userId), eq(plans.isActive, true), gt(plans.expiresAt, new Date())))
+      .orderBy(desc(plans.createdAt))
       .limit(1)
 
     return {
@@ -51,7 +51,7 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
         ? { id: user.id, name: user.name, email: user.email, phone: user.phone }
         : null,
       profile: profile || null,
-      plan: activePlan?.isActive && new Date(activePlan.expiresAt) > new Date() ? activePlan : null
+      plan: activePlan || null
     }
   })
 

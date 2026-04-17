@@ -12,6 +12,21 @@ const otpStore = new Map<string, { code: string; expiresAt: number; name: string
 const signinOtpStore = new Map<string, { code: string; expiresAt: number }>()               // sign-in 2FA
 const resetOtpStore = new Map<string, { code: string; expiresAt: number }>()                // password reset
 
+// Periodic cleanup of expired OTPs to prevent memory leaks
+function purgeExpiredOtps(): void {
+  const now = Date.now()
+  for (const [key, val] of otpStore) {
+    if (val.expiresAt < now) otpStore.delete(key)
+  }
+  for (const [key, val] of signinOtpStore) {
+    if (val.expiresAt < now) signinOtpStore.delete(key)
+  }
+  for (const [key, val] of resetOtpStore) {
+    if (val.expiresAt < now) resetOtpStore.delete(key)
+  }
+}
+setInterval(purgeExpiredOtps, 5 * 60 * 1000) // every 5 minutes
+
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   // Google identity — returns Google user info without touching DB (used for email verification during signup)
   app.get('/auth/google/identity', async (request, reply) => {

@@ -14,6 +14,7 @@ const WS_URL   = 'wss://innogarage-ai-production.up.railway.app'
 export const BASE_URL = 'https://innogarage-ai-production.up.railway.app'
 const DEBUG    = true
 const TARGET_SAMPLE_RATE = 16000  // Deepgram linear16 expects 16kHz
+const MAX_WS_RECONNECTS = 3      // auto-reconnect up to 3 times on transient disconnect
 
 type AudioSource = 'mic' | 'system'
 
@@ -32,6 +33,7 @@ let wsConn:          WebSocket | null           = null
 let currentSource:   AudioSource               = 'mic'
 let callbacks:       AudioPipelineCallbacks | null = null
 let isRunning        = false
+let wsReconnects     = 0
 
 function dbg(...args: unknown[]): void {
   if (DEBUG) console.log('[AudioPipeline]', ...args)
@@ -90,7 +92,22 @@ function openWebSocket(token: string): WebSocket {
   ws.onclose = (e) => {
     dbg(`WebSocket closed: code=${e.code} reason=${e.reason}`)
     if (isRunning && e.code !== 1000 && e.code !== 4001) {
-      callbacks?.onError(`Stream disconnected (${e.code})`)
+      // Transient disconnect — try to reconnect
+      if (wsReconnects < MAX_WS_RECONNECTS) {
+        wsReconnects++
+        const delay = wsReconnects * 1000 // 1s, 2s, 3s backoff
+        dbg(`Attempting WS reconnect #${wsReconnects} in ${delay}ms`)
+        setTimeout(() => {
+          if (!isRunning) return
+          try {
+            wsConn = openWebSocket(token)
+          } catch {
+            callbacks?.onError('Failed to reconnect audio stream')
+          }
+        }, delay)
+      } else {
+        callbacks?.onError(`Stream disconnected (${e.code})`)
+      }
     }
   }
 
@@ -232,6 +249,7 @@ export async function startAudioPipeline(
     })
 
     await setupAudioCapture(mediaStream)
+    wsReconnects = 0
     cbs.onStateChange('listening')
     dbg('Pipeline fully started ✓')
   } catch (err) {

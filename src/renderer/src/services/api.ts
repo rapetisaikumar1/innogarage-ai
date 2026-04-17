@@ -1,8 +1,10 @@
 const BASE_URL = 'https://innogarage-ai-production.up.railway.app'
+const REQUEST_TIMEOUT_MS = 30_000 // 30s default timeout
 
 async function request<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  timeoutMs: number = REQUEST_TIMEOUT_MS
 ): Promise<T> {
   const token = localStorage.getItem('token')
   const headers: Record<string, string> = {
@@ -17,17 +19,33 @@ async function request<T>(
     headers['Content-Type'] = 'application/json'
   }
 
-  const response = await fetch(`${BASE_URL}${endpoint}`, {
-    ...options,
-    headers
-  })
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Request failed' }))
-    throw new Error(error.error || 'Request failed')
+  try {
+    const response = await fetch(`${BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+      signal: options.signal ?? controller.signal
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Request failed' }))
+      throw new Error(error.error || 'Request failed')
+    }
+
+    return response.json()
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') {
+      throw new Error('Request timed out. Please check your connection and try again.')
+    }
+    if (err instanceof TypeError && (err.message.includes('fetch') || err.message.includes('network'))) {
+      throw new Error('Network error. Please check your internet connection.')
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
   }
-
-  return response.json()
 }
 
 export const api = {
@@ -163,38 +181,51 @@ export const api = {
     onError: (err: string) => void
   ): Promise<void> => {
     const token = localStorage.getItem('token')
-    const response = await fetch(`${BASE_URL}/interview/ask`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      },
-      body: JSON.stringify({ text })
-    })
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({ error: 'Request failed' }))
-      onError(err.error || 'Request failed')
-      return
-    }
-    const reader = response.body!.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        const payload = line.slice(6).trim()
-        if (payload === '[DONE]') return
-        try {
-          const parsed = JSON.parse(payload)
-          if (parsed.error) { onError(parsed.error); return }
-          if (parsed.text) onChunk(parsed.text)
-        } catch { /* ignore malformed lines */ }
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 60_000) // 60s for streaming
+    try {
+      const response = await fetch(`${BASE_URL}/interview/ask`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ text }),
+        signal: controller.signal
+      })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Request failed' }))
+        onError(err.error || 'Request failed')
+        return
       }
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const payload = line.slice(6).trim()
+          if (payload === '[DONE]') return
+          try {
+            const parsed = JSON.parse(payload)
+            if (parsed.error) { onError(parsed.error); return }
+            if (parsed.text) onChunk(parsed.text)
+          } catch { /* ignore malformed lines */ }
+        }
+      }
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        onError('Response timed out. Please try again.')
+      } else {
+        onError((err as Error).message || 'Stream connection failed')
+      }
+    } finally {
+      clearTimeout(timer)
     }
   },
 
