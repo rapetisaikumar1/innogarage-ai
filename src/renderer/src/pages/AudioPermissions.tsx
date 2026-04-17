@@ -13,14 +13,20 @@ const SCREEN_SETTINGS_LABEL = isMac
     ? 'Settings > Privacy & Security > Screen capture (ms-settings:privacy-graphicscapturewithoutborder)'
     : 'System privacy settings'
 
-const SCREEN_DENIED_MSG = isMac
-  ? 'System Settings has been opened. Enable innogarage.ai under "Screen & System Audio Recording", then fully QUIT this app (Cmd+Q) and reopen it.'
+const SCREEN_PROMPT_MSG = isMac
+  ? 'A system prompt appeared. Click "Open System Settings", enable innogarage.ai under "Screen & System Audio Recording", then fully QUIT this app (Cmd+Q) and reopen it.'
   : isWin
-    ? 'Windows Settings has been opened. Allow screen capture for innogarage.ai under Privacy & Security, then fully close and reopen the app.'
+    ? 'Allow screen capture for innogarage.ai under Privacy & Security, then fully close and reopen the app.'
+    : 'Enable screen recording permission in your system settings, then restart the app.'
+
+const SCREEN_DENIED_MSG = isMac
+  ? 'Enable innogarage.ai under "Screen & System Audio Recording", then fully QUIT this app (Cmd+Q) and reopen it.'
+  : isWin
+    ? 'Allow screen capture for innogarage.ai under Privacy & Security, then fully close and reopen the app.'
     : 'Enable screen recording permission in your system settings, then restart the app.'
 
 const SCREEN_STALE_MSG = isMac
-  ? 'Permission appears enabled but is outdated (app was re-installed). Open System Settings > Privacy & Security > Screen & System Audio Recording, toggle OFF innogarage.ai, then toggle it back ON, fully QUIT this app (Cmd+Q), and reopen it.'
+  ? 'Permission appears enabled but is outdated (app was re-installed). Toggle OFF innogarage.ai, then toggle it back ON, fully QUIT this app (Cmd+Q), and reopen it.'
   : 'Permission appears enabled but is outdated. Please remove and re-add the screen recording permission for innogarage.ai in your system settings, then restart the app.'
 
 const MIC_DENIED_MSG = isMac
@@ -75,17 +81,27 @@ export default function AudioPermissions(): React.JSX.Element {
     setSystemLoading(true)
     setSystemError('')
     try {
+      // Check OS-level permission FIRST to decide the right action
+      const status = await window.api.getScreenPermissionStatus()
+
+      if (status === 'denied') {
+        // Previously denied — native prompt won't appear again, open Settings directly
+        await window.api.openScreenSettings()
+        setSystemError(SCREEN_DENIED_MSG)
+        setSystemGranted(false)
+        return
+      }
+
+      // Attempt capture — triggers native prompt if 'not-determined'
       const sourceId = await window.api.getDesktopAudioSourceId()
       if (!sourceId) {
-        // Check OS-level permission to distinguish "not granted" from "stale TCC"
-        const status = await window.api.getScreenPermissionStatus()
         if (status === 'granted') {
           // OS says granted but desktopCapturer returns empty → stale TCC entry
           await window.api.openScreenSettings()
           setSystemError(SCREEN_STALE_MSG)
         } else {
-          await window.api.openScreenSettings()
-          setSystemError(SCREEN_DENIED_MSG)
+          // 'not-determined' — native prompt was just shown by getSources()
+          setSystemError(SCREEN_PROMPT_MSG)
         }
         setSystemGranted(false)
         return
@@ -114,8 +130,7 @@ export default function AudioPermissions(): React.JSX.Element {
       setSystemGranted(false)
       const msg = (err as Error).message
       if (msg.includes('denied') || msg.includes('NotAllowed')) {
-        await window.api.openScreenSettings()
-        setSystemError(SCREEN_DENIED_MSG)
+        setSystemError(SCREEN_PROMPT_MSG)
       } else {
         setSystemError('Could not capture system audio: ' + msg)
       }
@@ -129,15 +144,22 @@ export default function AudioPermissions(): React.JSX.Element {
     setScreenLoading(true)
     setScreenError('')
     try {
+      const status = await window.api.getScreenPermissionStatus()
+
+      if (status === 'denied') {
+        await window.api.openScreenSettings()
+        setScreenError(SCREEN_DENIED_MSG)
+        setScreenGranted(false)
+        return
+      }
+
       const sourceId = await window.api.getDesktopAudioSourceId()
       if (!sourceId) {
-        const status = await window.api.getScreenPermissionStatus()
         if (status === 'granted') {
           await window.api.openScreenSettings()
           setScreenError(SCREEN_STALE_MSG)
         } else {
-          await window.api.openScreenSettings()
-          setScreenError(SCREEN_DENIED_MSG)
+          setScreenError(SCREEN_PROMPT_MSG)
         }
         setScreenGranted(false)
         return
@@ -161,8 +183,7 @@ export default function AudioPermissions(): React.JSX.Element {
       setScreenGranted(false)
       const msg = (err as Error).message
       if (msg.includes('denied') || msg.includes('NotAllowed')) {
-        await window.api.openScreenSettings()
-        setScreenError(SCREEN_DENIED_MSG)
+        setScreenError(SCREEN_PROMPT_MSG)
       } else {
         setScreenError('Could not capture screen: ' + msg)
       }
