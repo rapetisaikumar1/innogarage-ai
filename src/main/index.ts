@@ -17,8 +17,10 @@ function createWindow(): void {
     show: false,
     frame: false,
     transparent: true,
+    backgroundColor: '#00000000',
     autoHideMenuBar: true,
     ...(process.platform !== 'darwin' ? { icon } : {}),
+    ...(process.platform === 'win32' ? { titleBarStyle: 'hidden' } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
@@ -106,9 +108,13 @@ ipcMain.handle('audio:get-screen-permission-status', () => {
   return systemPreferences.getMediaAccessStatus('screen')
 })
 
-// Opens System Settings to Screen & System Audio Recording
+// Opens OS-specific screen recording/privacy settings
 ipcMain.handle('audio:open-screen-settings', () => {
-  shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture')
+  if (process.platform === 'darwin') {
+    shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture')
+  } else if (process.platform === 'win32') {
+    shell.openExternal('ms-settings:privacy-graphicscapturewithoutborder')
+  }
 })
 
 // Injects a floating "← Cancel" button into a Google OAuth BrowserWindow.

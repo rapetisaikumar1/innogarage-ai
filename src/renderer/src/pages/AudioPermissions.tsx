@@ -4,6 +4,27 @@ import { ArrowLeft, Monitor, Mic, Shield, CheckCircle2, AlertCircle, ArrowRight,
 import Button from '../components/ui/Button'
 import { useAuthStore } from '../store/authStore'
 
+const isMac = window.api.platform === 'darwin'
+const isWin = window.api.platform === 'win32'
+
+const SCREEN_SETTINGS_LABEL = isMac
+  ? 'System Settings > Privacy & Security > Screen & System Audio Recording'
+  : isWin
+    ? 'Settings > Privacy & Security > Screen capture (ms-settings:privacy-graphicscapturewithoutborder)'
+    : 'System privacy settings'
+
+const SCREEN_DENIED_MSG = isMac
+  ? 'System Settings has been opened. Enable innogarage.ai under "Screen & System Audio Recording", then fully QUIT this app (Cmd+Q) and reopen it.'
+  : isWin
+    ? 'Windows Settings has been opened. Allow screen capture for innogarage.ai under Privacy & Security, then fully close and reopen the app.'
+    : 'Enable screen recording permission in your system settings, then restart the app.'
+
+const MIC_DENIED_MSG = isMac
+  ? 'Permission denied. Open System Settings > Privacy & Security > Microphone and enable innogarage.ai.'
+  : isWin
+    ? 'Permission denied. Open Settings > Privacy & Security > Microphone and enable innogarage.ai.'
+    : 'Microphone permission denied. Check your system privacy settings.'
+
 export default function AudioPermissions(): React.JSX.Element {
   const navigate = useNavigate()
   const { isLoggedIn } = useAuthStore()
@@ -36,7 +57,7 @@ export default function AudioPermissions(): React.JSX.Element {
       setMicGranted(false)
       const msg = (err as Error).message
       if (msg.includes('denied') || msg.includes('NotAllowed')) {
-        setMicError('Permission denied. Please allow microphone access in System Settings > Privacy > Microphone.')
+        setMicError(MIC_DENIED_MSG)
       } else {
         setMicError('Could not access microphone. Please check your system settings.')
       }
@@ -54,7 +75,7 @@ export default function AudioPermissions(): React.JSX.Element {
       if (!sourceId) {
         // Auto-open System Settings so user doesn't have to navigate manually
         await window.api.openScreenSettings()
-        setSystemError('System Settings has been opened. Enable innogarage.ai under "Screen & System Audio Recording", then fully QUIT this app (Cmd+Q) and reopen it.')
+        setSystemError(SCREEN_DENIED_MSG)
         setSystemGranted(false)
         return
       }
@@ -83,7 +104,7 @@ export default function AudioPermissions(): React.JSX.Element {
       const msg = (err as Error).message
       if (msg.includes('denied') || msg.includes('NotAllowed')) {
         await window.api.openScreenSettings()
-        setSystemError('Permission denied. System Settings opened — enable innogarage.ai, then fully QUIT this app (Cmd+Q) and reopen it.')
+        setSystemError(SCREEN_DENIED_MSG)
       } else {
         setSystemError('Could not capture system audio: ' + msg)
       }
@@ -100,7 +121,7 @@ export default function AudioPermissions(): React.JSX.Element {
       const sourceId = await window.api.getDesktopAudioSourceId()
       if (!sourceId) {
         await window.api.openScreenSettings()
-        setScreenError('System Settings has been opened. Enable innogarage.ai under "Screen & System Audio Recording", then fully QUIT this app (Cmd+Q) and reopen it.')
+        setScreenError(SCREEN_DENIED_MSG)
         setScreenGranted(false)
         return
       }
@@ -124,7 +145,7 @@ export default function AudioPermissions(): React.JSX.Element {
       const msg = (err as Error).message
       if (msg.includes('denied') || msg.includes('NotAllowed')) {
         await window.api.openScreenSettings()
-        setScreenError('Permission denied. System Settings opened — enable innogarage.ai, then fully QUIT this app (Cmd+Q) and reopen it.')
+        setScreenError(SCREEN_DENIED_MSG)
       } else {
         setScreenError('Could not capture screen: ' + msg)
       }
@@ -179,7 +200,7 @@ export default function AudioPermissions(): React.JSX.Element {
           <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
           <p className="text-xs text-blue-300/80">
             Click <strong className="text-blue-300">Allow</strong> on each permission below.
-            Your browser or macOS will show a system prompt — you must approve it there.
+            Your system will show a permission prompt — you must approve it there.
             All permissions are required to start the interview.
           </p>
         </div>
