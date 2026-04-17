@@ -17,14 +17,11 @@ win:
   icon: resources/icon.png
   target:
     - nsis
-    - portable
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
-portable:
-  artifactName: ${name}-${version}-portable.${ext}
 mac:
   hardenedRuntime: false
   identity: null
