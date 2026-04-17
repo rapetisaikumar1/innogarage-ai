@@ -25,6 +25,24 @@ async function start(): Promise<void> {
   await app.register(planRoutes)
   await app.register(interviewRoutes)
 
+  // Debug endpoint — test email delivery synchronously
+  app.post('/debug/test-email', async (request, reply) => {
+    const { email } = request.body as { email: string }
+    if (!email) return reply.code(400).send({ error: 'email required' })
+    try {
+      const { sendVerificationEmail } = await import('./services/email')
+      await sendVerificationEmail(email, '123456', 'Test User')
+      return { success: true, message: `Email sent to ${email}` }
+    } catch (err: unknown) {
+      const e = err as { message?: string; response?: { body?: unknown } }
+      console.error('[debug/test-email] error:', e?.response?.body || e?.message)
+      return reply.code(500).send({
+        error: e?.message,
+        details: e?.response?.body
+      })
+    }
+  })
+
   const port = parseInt(process.env.PORT || process.env.SERVER_PORT || '3847')
   await app.listen({ port, host: '0.0.0.0' })
   console.log(`Server running on http://localhost:${port}`)
