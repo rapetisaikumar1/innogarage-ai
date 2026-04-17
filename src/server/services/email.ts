@@ -9,8 +9,8 @@ function getResend(): Resend {
   return _resend
 }
 
-// Using Resend's verified sender domain — works without a custom domain
-const FROM = 'innogarage.ai <onboarding@resend.dev>'
+// Using verified custom domain — requires innogarage.ai to be verified in Resend dashboard
+const FROM = 'innogarage.ai <noreply@innogarage.ai>'
 
 export async function sendVerificationEmail(
   email: string,
