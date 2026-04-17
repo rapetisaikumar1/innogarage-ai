@@ -1,28 +1,12 @@
-import nodemailer from 'nodemailer'
+import sgMail from '@sendgrid/mail'
 
-let _transporter: nodemailer.Transporter | null = null
+sgMail.setApiKey(process.env.SENDGRID_API_KEY!)
 
-function getTransporter(): nodemailer.Transporter {
-  if (!_transporter) {
-    _transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      family: 4, // force IPv4 — Railway does not support IPv6 outbound
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD
-      }
-    })
-  }
-  return _transporter
-}
-
-const FROM = `innogarage.ai <${process.env.GMAIL_USER}>`
+const FROM = process.env.SENDGRID_FROM_EMAIL || 'rapetisaikumar1999@gmail.com'
 
 async function sendMail(to: string, subject: string, html: string): Promise<void> {
-  const info = await getTransporter().sendMail({ from: FROM, to, subject, html })
-  console.log(`[email] Sent to ${to} — messageId: ${info.messageId}`)
+  const [res] = await sgMail.send({ from: FROM, to, subject, html })
+  console.log(`[email] Sent to ${to} — status ${res.statusCode}`)
 }
 
 export async function sendVerificationEmail(
