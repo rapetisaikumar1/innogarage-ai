@@ -6,6 +6,7 @@ function getTransporter(): nodemailer.Transporter {
   if (!_transporter) {
     _transporter = nodemailer.createTransport({
       service: 'gmail',
+      family: 4, // force IPv4 — Railway does not support IPv6 outbound
       auth: {
         user: process.env.GMAIL_USER,
         pass: process.env.GMAIL_APP_PASSWORD
