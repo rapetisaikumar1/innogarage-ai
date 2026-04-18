@@ -158,8 +158,6 @@ async function getSystemAudioStream(): Promise<MediaStream> {
 
 // ── AudioContext + ScriptProcessor setup ─────────────────────────────────────
 
-let silentGain: GainNode | null = null
-
 async function setupAudioCapture(stream: MediaStream): Promise<void> {
   dbg('─── SETUP AUDIO CONTEXT ───')
   audioContext = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE })
@@ -181,16 +179,15 @@ async function setupAudioCapture(stream: MediaStream): Promise<void> {
     wsConn.send(int16.buffer)
   }
 
-  // Use a silent gain node to keep the processor in the audio graph
-  // without routing mic audio to speakers (which caused echo/feedback
-  // and system audio bleeding into mic transcriptions)
-  silentGain = audioContext.createGain()
-  silentGain.gain.value = 0
+  // Route to a MediaStreamDestinationNode (not audioContext.destination) to keep
+  // the audio graph alive so onaudioprocess fires, but never route audio to speakers.
+  // Routing to audioContext.destination (even via gain=0) can create an internal
+  // loopback in Electron/Chrome, causing system output to bleed into mic captures.
+  const streamDest = audioContext.createMediaStreamDestination()
 
   source.connect(processor)
-  processor.connect(silentGain)
-  silentGain.connect(audioContext.destination)
-  dbg('  ✓ ScriptProcessor connected via silent gain — streaming PCM to WebSocket')
+  processor.connect(streamDest)
+  dbg('  ✓ ScriptProcessor connected via MediaStreamDestination — streaming PCM to WebSocket')
 }
 
 // ── Teardown ──────────────────────────────────────────────────────────────────
@@ -202,10 +199,6 @@ function teardown(): void {
     processor.disconnect()
     processor.onaudioprocess = null
     processor = null
-  }
-  if (silentGain) {
-    silentGain.disconnect()
-    silentGain = null
   }
   if (audioContext) {
     audioContext.close().catch(() => {})
