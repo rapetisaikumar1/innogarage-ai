@@ -1,62 +1,49 @@
 import { shell, systemPreferences } from 'electron'
+import type { BrowserWindow } from 'electron'
 import type { PlatformBehavior } from './types'
 
+// Heartbeat: macOS resets NSWindowSharingNone when screen sharing starts in
+// another app (Zoom, Meet, etc.) — no window event fires at that point.
+// A 3s interval keeps the protection applied no matter what triggers the reset.
+let cpHeartbeat: ReturnType<typeof setInterval> | null = null
+
+function startHeartbeat(win: BrowserWindow): void {
+  if (cpHeartbeat) return
+  cpHeartbeat = setInterval(() => {
+    if (win.isDestroyed()) { stopHeartbeat(); return }
+    win.setContentProtection(true)
+  }, 3000)
+}
+
+function stopHeartbeat(): void {
+  if (cpHeartbeat) { clearInterval(cpHeartbeat); cpHeartbeat = null }
+}
+
 const darwin: PlatformBehavior = {
-  earlySetup() {
-    // No early setup needed on macOS
-  },
+  earlySetup() {},
 
   windowOptions() {
     return {
       transparent: true,
       backgroundColor: '#00000000'
-      // No icon on macOS — uses the .app bundle icon
     }
   },
 
-  onWindowCreated(win) {
-    // Prime the Quartz compositor early so subsequent setContentProtection(true)
-    // calls are more reliable on fresh installs and across all macOS versions.
-    win.setContentProtection(true)
-    setTimeout(() => { if (!win.isDestroyed()) win.setContentProtection(false) }, 200)
-  },
+  onWindowCreated(_win) {},
 
   bindContentProtectionEvents(win, reapply) {
-    // macOS resets NSWindowSharingNone on focus, show, space transitions,
-    // restore-from-minimize, and when leaving full-screen
     win.on('focus', reapply)
     win.on('show', reapply)
-    win.on('enter-full-screen', reapply)
-    win.on('leave-full-screen', reapply)
-    win.on('restore', reapply)
   },
 
   applyContentProtection(win, enabled) {
     if (win.isDestroyed()) return
     win.setContentProtection(enabled)
-    if (!enabled) return
-
-    // macOS Quartz compositor resets NSWindowSharingNone at various points.
-    // Re-apply with escalating delays to cover all macOS versions and hardware.
-    for (const delay of [150, 350, 700]) {
-      setTimeout(() => {
-        if (!win.isDestroyed()) win.setContentProtection(true)
-      }, delay)
+    if (enabled) {
+      startHeartbeat(win)
+    } else {
+      stopHeartbeat()
     }
-
-    // Bounds-redraw hack: forces the Quartz compositor to re-read NSWindowSharingNone.
-    // Without this, some macOS systems cache the previous sharing type and the window
-    // remains visible in screen capture even after setContentProtection(true).
-    setTimeout(() => {
-      if (win.isDestroyed()) return
-      const b = win.getBounds()
-      win.setBounds({ ...b, width: b.width + 1 })
-      setTimeout(() => {
-        if (win.isDestroyed()) return
-        win.setBounds(b)
-        win.setContentProtection(true)
-      }, 50)
-    }, 250)
   },
 
   applyOverlayMode(win, enabled) {
@@ -68,16 +55,14 @@ const darwin: PlatformBehavior = {
     win.setVisibleOnAllWorkspaces(flag, { visibleOnFullScreen: true })
   },
 
-  setSkipTaskbar(_win, _flag) {
-    // macOS doesn't have a taskbar hide equivalent via this API
-  },
+  setSkipTaskbar(_win, _flag) {},
 
   appUserModelId() {
     return 'com.innogarage'
   },
 
   shouldQuitOnAllClosed() {
-    return false // macOS convention: keep app alive
+    return false
   },
 
   openScreenSettings() {
@@ -91,11 +76,11 @@ const darwin: PlatformBehavior = {
   },
 
   contentProtectionDelay() {
-    return 350 // macOS needs a longer delay to cover all hardware/compositor reset scenarios
+    return 350
   },
 
   cleanup() {
-    // No cleanup needed
+    stopHeartbeat()
   }
 }
 
