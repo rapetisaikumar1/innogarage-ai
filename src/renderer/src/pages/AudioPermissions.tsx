@@ -21,7 +21,9 @@ const SCREEN_DENIED_MSG = isMac
 
 const SCREEN_STALE_MSG = isMac
   ? 'Permission appears enabled but is outdated (app was re-installed). Open System Settings > Privacy & Security > Screen & System Audio Recording, toggle OFF innogarage.ai, then toggle it back ON, fully QUIT this app (Cmd+Q), and reopen it.'
-  : 'Permission appears enabled but is outdated. Please remove and re-add the screen recording permission for innogarage.ai in your system settings, then restart the app.'
+  : isWin
+    ? 'Screen capture is enabled but the app cannot access sources. Try fully closing and reopening the app. If the problem persists, uninstall and reinstall innogarage.ai.'
+    : 'Permission appears enabled but is outdated. Please restart the app. If the problem persists, reinstall innogarage.ai.'
 
 const MIC_DENIED_MSG = isMac
   ? 'Permission denied. Open System Settings > Privacy & Security > Microphone and enable innogarage.ai.'

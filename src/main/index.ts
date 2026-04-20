@@ -84,9 +84,10 @@ ipcMain.on('window:setAlwaysOnTop', (_event, flag: boolean) => {
     if (process.platform !== 'win32') {
       mainWindow.setVisibleOnAllWorkspaces(flag, { visibleOnFullScreen: true })
     }
-    // Windows: setAlwaysOnTop can reset WDA_EXCLUDEFROMCAPTURE — re-apply immediately
+    // Windows: setAlwaysOnTop can reset WDA_EXCLUDEFROMCAPTURE — re-apply after a longer
+    // delay (150ms) to account for slower GPU drivers and high system load
     if (process.platform === 'win32' && desiredContentProtection) {
-      scheduleContentProtection(50)
+      scheduleContentProtection(150)
     }
   }
 })

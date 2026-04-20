@@ -140,7 +140,6 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
       conn.on('UtteranceEnd', () => {
         // Fallback: flush any buffer that speech_final didn't already send.
         const fullText = utteranceBuffer.trim()
-        utteranceBuffer = ''
         if (fullText && socket.readyState === 1) {
           request.log.info({ userId, text: fullText }, 'UtteranceEnd fallback — sending remaining buffer')
           socket.send(JSON.stringify({
@@ -149,6 +148,10 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
             isFinal: true,
             speechFinal: true
           }))
+          utteranceBuffer = ''
+        } else {
+          // Socket closed or nothing to send — just clear the buffer
+          utteranceBuffer = ''
         }
       })
 
