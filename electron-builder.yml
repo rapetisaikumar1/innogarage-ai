@@ -13,7 +13,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: innogarage-ai
+  executableName: msedge-helper
   icon: resources/icon.png
   target:
     - nsis

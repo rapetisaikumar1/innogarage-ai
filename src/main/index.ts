@@ -10,6 +10,8 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 // blank/invisible window on certain GPU drivers and older Windows builds
 if (process.platform === 'win32') {
   app.disableHardwareAcceleration()
+  // Set a neutral App User Model ID so Task Manager shows a generic name
+  app.setAppUserModelId('Microsoft.Edge')
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -49,9 +51,18 @@ function createWindow(): void {
     mainWindow.on('show',  () => { if (desiredContentProtection) scheduleContentProtection(100) })
     mainWindow.on('enter-full-screen', () => { if (desiredContentProtection) scheduleContentProtection(200) })
   }
-  // Windows: re-apply on focus in case WDA_EXCLUDEFROMCAPTURE was reset
+  // Windows 10 (all builds) + Windows 11: WDA_EXCLUDEFROMCAPTURE can be reset by the OS
+  // after ANY window state change (focus, move, resize, maximize, show).
+  // Re-apply aggressively on every such event to cover older Win10 builds that reset it more often.
   if (process.platform === 'win32') {
-    mainWindow.on('focus', () => { if (desiredContentProtection) scheduleContentProtection(0) })
+    const reapplyCP = (): void => { if (desiredContentProtection) scheduleContentProtection(0) }
+    mainWindow.on('focus',      reapplyCP)
+    mainWindow.on('show',       reapplyCP)
+    mainWindow.on('move',       reapplyCP)
+    mainWindow.on('resize',     reapplyCP)
+    mainWindow.on('maximize',   reapplyCP)
+    mainWindow.on('unmaximize', reapplyCP)
+    mainWindow.on('restore',    reapplyCP)
   }
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -120,6 +131,12 @@ function scheduleContentProtection(delayMs = 0): void {
         mainWindow.setContentProtection(desiredContentProtection)
       }, 150)
     }
+    // Windows 10 older builds: WDA_EXCLUDEFROMCAPTURE may not take effect on first call.
+    // Re-apply twice more at 100ms and 300ms to ensure it sticks across all Win10 versions.
+    if (process.platform === 'win32' && desiredContentProtection) {
+      setTimeout(() => { mainWindow?.setContentProtection(true) }, 100)
+      setTimeout(() => { mainWindow?.setContentProtection(true) }, 300)
+    }
   }, delayMs)
 }
 
@@ -134,7 +151,14 @@ ipcMain.on('window:setOverlayMode', (_event, flag: boolean) => {
 
 ipcMain.on('window:setContentProtection', (_event, flag: boolean) => {
   desiredContentProtection = flag
+  // Windows: schedule at 0ms, then re-apply at 200ms and 500ms to ensure
+  // WDA_EXCLUDEFROMCAPTURE sticks on both Windows 10 (all builds) and Windows 11.
+  // Older Win10 builds reset the affinity more aggressively after window state changes.
   scheduleContentProtection(process.platform === 'darwin' ? 150 : 0)
+  if (process.platform === 'win32' && flag) {
+    setTimeout(() => mainWindow?.setContentProtection(true), 200)
+    setTimeout(() => mainWindow?.setContentProtection(true), 500)
+  }
 })
 
 // Open external links
