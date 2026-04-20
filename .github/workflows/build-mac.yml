@@ -27,7 +27,7 @@ jobs:
         run: npm ci
 
       - name: Build macOS DMG (arm64 + x64)
-        run: electron-vite build && electron-builder --mac --arm64 --x64
+        run: npx electron-vite build && npx electron-builder --mac --arm64 --x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
