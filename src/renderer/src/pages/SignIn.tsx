@@ -25,10 +25,15 @@ export default function SignIn(): React.JSX.Element {
   const validate = (): boolean => {
     const errs: Record<string, string> = {}
     if (!form.email.trim()) errs.email = 'Email is required'
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = 'Invalid email address'
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errs.email = 'Invalid email address'
     if (!form.password) errs.password = 'Password is required'
+    else if (form.password.length < 8) errs.password = 'Password must be at least 8 characters'
     setErrors(errs)
     return Object.keys(errs).length === 0
+  }
+
+  const clearError = (field: string): void => {
+    if (errors[field]) setErrors(prev => { const e = { ...prev }; delete e[field]; return e })
   }
 
   // Step 1: validate credentials → send sign-in OTP
@@ -37,7 +42,7 @@ export default function SignIn(): React.JSX.Element {
     if (!validate()) return
     setLoading(true)
     try {
-      await api.sendSigninOtp({ email: form.email, password: form.password })
+      await api.sendSigninOtp({ email: form.email.trim().toLowerCase(), password: form.password })
       setErrors({})
       setOtp(['', '', '', '', '', ''])
       setStep('otp')
@@ -55,7 +60,7 @@ export default function SignIn(): React.JSX.Element {
     if (code.length < 6) { setErrors({ otp: 'Please enter the full 6-digit code' }); return }
     setLoading(true)
     try {
-      const res = await api.login({ email: form.email, otp: code })
+      const res = await api.login({ email: form.email.trim().toLowerCase(), otp: code })
       setAuth(res.user, res.token)
       navigate('/post-auth')
     } catch (err) {
@@ -125,7 +130,7 @@ export default function SignIn(): React.JSX.Element {
     if (step === 'otp') {
       setOtp(['', '', '', '', '', ''])
       try {
-        await api.sendSigninOtp({ email: form.email, password: form.password })
+        await api.sendSigninOtp({ email: form.email.trim().toLowerCase(), password: form.password })
       } catch (err) {
         setErrors({ otp: (err as Error).message })
       }
@@ -195,9 +200,9 @@ export default function SignIn(): React.JSX.Element {
           <>
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input label="Email Address" type="email" placeholder="john@example.com" icon={<Mail className="w-4 h-4" />}
-                value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} error={errors.email} />
+                value={form.email} onChange={(e) => { setForm({ ...form, email: e.target.value }); clearError('email') }} error={errors.email} />
               <Input label="Password" type="password" placeholder="••••••••" icon={<Lock className="w-4 h-4" />}
-                value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} error={errors.password} />
+                value={form.password} onChange={(e) => { setForm({ ...form, password: e.target.value }); clearError('password') }} error={errors.password} />
 
               <div className="text-right">
                 <button type="button" onClick={() => navigate('/forgot-password')}

@@ -25,14 +25,24 @@ export default function CreateAccount(): React.JSX.Element {
   const validate = (): boolean => {
     const errs: Record<string, string> = {}
     if (!form.name.trim()) errs.name = 'Name is required'
+    else if (form.name.trim().length < 2) errs.name = 'Name must be at least 2 characters'
     if (!form.email.trim()) errs.email = 'Email is required'
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = 'Invalid email address'
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errs.email = 'Invalid email address'
     if (!form.phone.trim()) errs.phone = 'Phone number is required'
+    else {
+      const digits = form.phone.replace(/\D/g, '')
+      if (digits.length < 7 || digits.length > 15) errs.phone = 'Enter a valid phone number (7–15 digits)'
+    }
     if (!form.password) errs.password = 'Password is required'
     else if (form.password.length < 8) errs.password = 'Password must be at least 8 characters'
-    if (form.password !== form.confirmPassword) errs.confirmPassword = 'Passwords do not match'
+    if (!form.confirmPassword) errs.confirmPassword = 'Please confirm your password'
+    else if (form.password !== form.confirmPassword) errs.confirmPassword = 'Passwords do not match'
     setErrors(errs)
     return Object.keys(errs).length === 0
+  }
+
+  const clearError = (field: string): void => {
+    if (errors[field]) setErrors(prev => { const e = { ...prev }; delete e[field]; return e })
   }
 
   // Step 1: validate → send OTP
@@ -41,7 +51,7 @@ export default function CreateAccount(): React.JSX.Element {
     if (!validate()) return
     setLoading(true)
     try {
-      await api.sendOtp({ name: form.name, email: form.email })
+      await api.sendOtp({ name: form.name.trim(), email: form.email.trim().toLowerCase() })
       setErrors({})
       setStep('otp')
     } catch (err) {
@@ -58,7 +68,7 @@ export default function CreateAccount(): React.JSX.Element {
     if (code.length < 6) { setErrors({ otp: 'Please enter the full 6-digit code' }); return }
     setLoading(true)
     try {
-      const res = await api.register({ name: form.name, email: form.email, phone: form.phone, password: form.password, otp: code })
+      const res = await api.register({ name: form.name.trim(), email: form.email.trim().toLowerCase(), phone: form.phone.trim(), password: form.password, otp: code })
       setAuth(res.user, res.token)
       navigate('/post-auth')
     } catch (err) {
@@ -129,8 +139,8 @@ export default function CreateAccount(): React.JSX.Element {
     if (isGoogle) setGoogleOtp(['', '', '', '', '', ''])
     else setOtp(['', '', '', '', '', ''])
     try {
-      const name = isGoogle ? (googlePending?.name ?? '') : form.name
-      const email = isGoogle ? (googlePending?.email ?? '') : form.email
+      const name = isGoogle ? (googlePending?.name ?? '') : form.name.trim()
+      const email = isGoogle ? (googlePending?.email ?? '') : form.email.trim().toLowerCase()
       await api.sendOtp({ name, email })
     } catch (err) {
       setErrors({ otp: (err as Error).message })
@@ -191,15 +201,15 @@ export default function CreateAccount(): React.JSX.Element {
           <>
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input label="Full Name" placeholder="John Doe" icon={<User className="w-4 h-4" />}
-                value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} error={errors.name} />
+                value={form.name} onChange={(e) => { setForm({ ...form, name: e.target.value }); clearError('name') }} error={errors.name} />
               <Input label="Email Address" type="email" placeholder="john@example.com" icon={<Mail className="w-4 h-4" />}
-                value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} error={errors.email} />
+                value={form.email} onChange={(e) => { setForm({ ...form, email: e.target.value }); clearError('email') }} error={errors.email} />
               <Input label="Phone Number" type="tel" placeholder="+1 234 567 890" icon={<Phone className="w-4 h-4" />}
-                value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} error={errors.phone} />
+                value={form.phone} onChange={(e) => { setForm({ ...form, phone: e.target.value }); clearError('phone') }} error={errors.phone} />
               <Input label="Password" type="password" placeholder="••••••••" icon={<Lock className="w-4 h-4" />}
-                value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} error={errors.password} />
+                value={form.password} onChange={(e) => { setForm({ ...form, password: e.target.value }); clearError('password') }} error={errors.password} />
               <Input label="Confirm Password" type="password" placeholder="••••••••" icon={<Lock className="w-4 h-4" />}
-                value={form.confirmPassword} onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })} error={errors.confirmPassword} />
+                value={form.confirmPassword} onChange={(e) => { setForm({ ...form, confirmPassword: e.target.value }); clearError('confirmPassword') }} error={errors.confirmPassword} />
               {errors.submit && <p className="text-sm text-red-400 text-center">{errors.submit}</p>}
               <Button type="submit" className="w-full" loading={loading}>Send Verification Code</Button>
             </form>
