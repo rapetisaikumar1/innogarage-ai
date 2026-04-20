@@ -70,11 +70,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
     otpStore.set(email, { code, expiresAt, name })
 
-    // Fire-and-forget — respond immediately, don't block on SMTP
-    sendVerificationEmail(email, code, name).catch((emailErr) => {
+    try {
+      await sendVerificationEmail(email, code, name)
+    } catch (emailErr) {
+      otpStore.delete(email)
       console.error('[email] Failed to send OTP:', emailErr)
-      console.log(`[auth] OTP for ${email}: ${code}`)
-    })
+      return reply.code(502).send({ error: 'Failed to send verification email. Please try again.' })
+    }
 
     return { message: 'Verification code sent' }
   })
@@ -169,11 +171,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const code = generateOtp()
     signinOtpStore.set(email, { code, expiresAt: Date.now() + 10 * 60 * 1000 })
 
-    // Fire-and-forget — respond immediately, don't block on SMTP
-    sendSigninOtpEmail(email, code, user.name).catch((emailErr) => {
+    try {
+      await sendSigninOtpEmail(email, code, user.name)
+    } catch (emailErr) {
+      signinOtpStore.delete(email)
       console.error('[email] Failed to send sign-in OTP:', emailErr)
-      console.log(`[auth] Sign-in OTP for ${email}: ${code}`)
-    })
+      return reply.code(502).send({ error: 'Failed to send verification email. Please try again.' })
+    }
 
     return { message: 'Verification code sent' }
   })
@@ -255,11 +259,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const expiresAt = Date.now() + 10 * 60 * 1000
     otpStore.set(googleEmail, { code: otpCode, expiresAt, name: googleUser.name })
 
-    // Fire-and-forget — respond immediately, don't block on SMTP
-    sendVerificationEmail(googleEmail, otpCode, googleUser.name).catch((emailErr) => {
+    try {
+      await sendVerificationEmail(googleEmail, otpCode, googleUser.name)
+    } catch (emailErr) {
+      otpStore.delete(googleEmail)
       console.error('[email] Failed to send Google OTP:', emailErr)
-      console.log(`[auth] Google OTP for ${googleEmail}: ${otpCode}`)
-    })
+      return reply.code(502).send({ error: 'Failed to send verification email. Please try again.' })
+    }
 
     return {
       type: 'verify',
@@ -328,15 +334,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     resetOtpStore.set(email, { code, expiresAt: Date.now() + 10 * 60 * 1000 })
 
     try {
-      sendPasswordResetEmail(email, code).catch((emailErr) => {
-        console.error('[email] Failed to send password reset OTP:', emailErr)
-        console.log(`[auth] Password reset OTP for ${email}: ${code}`)
-      })
+      await sendPasswordResetEmail(email, code)
     } catch (emailErr) {
+      resetOtpStore.delete(email)
       console.error('[email] Failed to send password reset OTP:', emailErr)
+      return reply.code(502).send({ error: 'Failed to send reset email. Please try again.' })
     }
 
-    return { message: 'If the email exists, a reset code has been sent' }
+    return { message: 'Password reset code sent to your email' }
   })
 
   // Reset password — verifies OTP, then sets new password
