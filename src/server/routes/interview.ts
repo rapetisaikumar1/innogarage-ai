@@ -4,7 +4,7 @@ import { getDb } from '../db'
 import { users, profiles } from '../db/schema'
 import { authMiddleware, verifyToken } from '../middleware/auth'
 import { DeepgramClient } from '@deepgram/sdk'
-import { initUserSession, generateAnswer, endUserSession, hasActiveSession, HistoryTurn } from '../services/gemini'
+import { initUserSession, generateAnswerStream, endUserSession, hasActiveSession, HistoryTurn } from '../services/gemini'
 import { initCodeAnalysisSession, analyzeScreenContent, endCodeAnalysisSession } from '../services/codeAnalysis'
 import { downloadCloudinaryRaw } from '../services/cloudinary'
 
@@ -272,7 +272,7 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
     return { message: 'Interview session started', active: true }
   })
 
-  // Send transcribed text → return complete AI answer as JSON
+  // Send transcribed text → stream AI answer as SSE
   app.post('/interview/ask', { preHandler: authMiddleware }, async (request, reply) => {
     const { userId } = (request as AuthRequest).user
     const { text } = request.body as { text: string }
@@ -285,12 +285,27 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: 'No active interview session' })
     }
 
+    reply.hijack()
+    const raw = reply.raw
+    raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    })
+    raw.write('\n')
+
     try {
-      const answer = await generateAnswer(userId, text.trim())
-      return { answer }
+      for await (const chunk of generateAnswerStream(userId, text.trim())) {
+        raw.write(`data: ${JSON.stringify({ text: chunk })}\n\n`)
+      }
+      raw.write('data: [DONE]\n\n')
     } catch (err) {
-      request.log.error({ err }, 'generateAnswer failed')
-      return reply.code(500).send({ error: 'AI service temporarily unavailable.' })
+      request.log.error({ err }, 'generateAnswerStream failed')
+      const msg = (err as Error).message || 'AI service temporarily unavailable.'
+      raw.write(`data: ${JSON.stringify({ error: msg })}\n\n`)
+    } finally {
+      raw.end()
     }
   })
 

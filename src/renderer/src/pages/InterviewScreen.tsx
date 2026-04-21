@@ -65,7 +65,7 @@ export default function InterviewScreen(): React.JSX.Element {
     }
   }, [codeSuggestion?.detected, codeSuggestion?.suggestion])
 
-  // Send finalized transcript to AI — waits for complete answer then displays it
+  // Send finalized transcript to AI — streams answer tokens progressively into the UI
   const sendToAI = useCallback(
     async (text: string) => {
       if (!text.trim()) return
@@ -82,8 +82,11 @@ export default function InterviewScreen(): React.JSX.Element {
 
       try {
         const doAsk = async (): Promise<void> => {
-          const { answer } = await api.interviewAsk(text.trim())
-          updateQAPairAnswer(id, answer)
+          let accumulated = ''
+          await api.interviewAskStream(text.trim(), (chunk) => {
+            accumulated += chunk
+            updateQAPairAnswer(id, accumulated)
+          })
         }
 
         try {

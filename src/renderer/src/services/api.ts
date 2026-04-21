@@ -181,11 +181,75 @@ export const api = {
       body: JSON.stringify({ history: history ?? [] })
     }),
 
-  interviewAsk: (text: string) =>
-    request<{ answer: string }>('/interview/ask', {
-      method: 'POST',
-      body: JSON.stringify({ text })
-    }, 45_000),
+  interviewAskStream: async (
+    text: string,
+    onChunk: (chunk: string) => void
+  ): Promise<string> => {
+    const token = localStorage.getItem('token')
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 45_000)
+
+    try {
+      const response = await fetch(`${BASE_URL}/interview/ask`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ text }),
+        signal: controller.signal
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('token')
+          localStorage.removeItem('user')
+          window.location.hash = '#/'
+          throw new Error('Session expired. Please log in again.')
+        }
+        const errBody = await response.json().catch(() => ({ error: 'Request failed' }))
+        throw new Error(errBody.error || 'Request failed')
+      }
+
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let accumulated = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop()!  // keep incomplete last line
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const payload = line.slice(6).trim()
+          if (payload === '[DONE]') return accumulated
+          let parsed: { text?: string; error?: string }
+          try { parsed = JSON.parse(payload) } catch { continue }
+          if (parsed.error) throw new Error(parsed.error)
+          if (parsed.text) {
+            accumulated += parsed.text
+            onChunk(parsed.text)
+          }
+        }
+      }
+
+      return accumulated
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        throw new Error('Request timed out. Please check your connection and try again.')
+      }
+      if (err instanceof TypeError && (err.message.includes('fetch') || err.message.includes('network'))) {
+        throw new Error('Network error. Please check your internet connection.')
+      }
+      throw err
+    } finally {
+      clearTimeout(timer)
+    }
+  },
 
   interviewEnd: () =>
     request<{ message: string }>('/interview/end', {
