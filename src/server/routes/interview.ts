@@ -40,13 +40,33 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
     let dgConn: { getReadyState: () => number; send: (b: Buffer) => void; requestClose: () => void } | null = null
 
     // Forward raw PCM from renderer → buffer or Deepgram
-    socket.on('message', (data: Buffer) => {
+    // Text frames (isBinary=false) carry JSON control messages (type: 'ask')
+    socket.on('message', (data: Buffer, isBinary: boolean) => {
+      if (!isBinary) {
+        try {
+          const msg = JSON.parse(data.toString('utf8')) as { type?: string; questionId?: string; text?: string }
+          if (msg.type === 'ask' && msg.questionId && msg.text?.trim()) {
+            const { questionId, text } = msg
+            ;(async () => {
+              try {
+                for await (const chunk of generateAnswerStream(userId, text.trim())) {
+                  if (socket.readyState === 1) socket.send(JSON.stringify({ type: 'ai_chunk', questionId, text: chunk }))
+                }
+                if (socket.readyState === 1) socket.send(JSON.stringify({ type: 'ai_done', questionId }))
+              } catch (err) {
+                request.log.error({ err, questionId }, 'WS AI stream error')
+                if (socket.readyState === 1) socket.send(JSON.stringify({ type: 'ai_error', questionId, message: 'AI service temporarily unavailable.' }))
+              }
+            })()
+          }
+        } catch { /* ignore malformed JSON */ }
+        return
+      }
       if (dgConn && dgConn.getReadyState() === 1) {
         dgConn.send(data)
       } else {
         audioBuffer.push(data)
-        // Cap buffer at ~6 seconds of audio (96 × 4096-sample chunks at 16kHz)
-        if (audioBuffer.length > 480) audioBuffer.shift() // ~30s buffer at 16kHz/2048 chunks
+        if (audioBuffer.length > 480) audioBuffer.shift()
       }
     })
 

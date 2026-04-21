@@ -4,7 +4,7 @@ import { Loader2, MessageSquare, Sparkles, AudioLines, Code2, Monitor, Copy, Che
 import { useAuthStore } from '../store/authStore'
 import { useInterviewStore } from '../store/interviewStore'
 import { useSessionStore } from '../store/sessionStore'
-import { startAudioPipeline, stopAudioPipeline, switchAudioSource } from '../services/audioPipeline'
+import { startAudioPipeline, stopAudioPipeline, switchAudioSource, sendQuestion } from '../services/audioPipeline'
 import { startScreenCapture, stopScreenCapture, pauseScreenCapture, resumeScreenCapture } from '../services/screenCapture'
 import { api } from '../services/api'
 import { useState } from 'react'
@@ -83,22 +83,28 @@ export default function InterviewScreen(): React.JSX.Element {
       addQAPair({ id, question: text.trim(), answer: '', timestamp: Date.now() })
 
       let accumulated = ''
-      console.log('[Pipeline STAGE 8] → api.interviewAskStream:', JSON.stringify(text))
+      console.log('[Pipeline STAGE 8] → sending question via WebSocket:', JSON.stringify(text))
       try {
-        await api.interviewAskStream(
-          text,
-          (chunk) => {
-            accumulated += chunk
-            updateQAPairAnswer(id, accumulated)
-          },
-          (err) => {
-            console.log('[Pipeline STAGE 8] ✗ stream error:', err)
-            setError(err)
+        await new Promise<void>((resolve, reject) => {
+          const sentViaWS = sendQuestion(
+            text,
+            id,
+            (chunk) => { accumulated += chunk; updateQAPairAnswer(id, accumulated) },
+            () => { console.log('[Pipeline STAGE 8] ← WS stream complete, total length:', accumulated.length); resolve() },
+            (err) => { console.log('[Pipeline STAGE 8] ✗ WS stream error:', err); reject(new Error(err)) }
+          )
+          if (!sentViaWS) {
+            // WS not open — fall back to HTTP SSE
+            console.log('[Pipeline STAGE 8] WS unavailable — falling back to HTTP')
+            api.interviewAskStream(
+              text,
+              (chunk) => { accumulated += chunk; updateQAPairAnswer(id, accumulated) },
+              (err) => { reject(new Error(err)) }
+            ).then(resolve).catch(reject)
           }
-        )
-        console.log('[Pipeline STAGE 8] ← stream complete, total length:', accumulated.length)
+        })
       } catch (err) {
-        console.log('[Pipeline STAGE 8] ✗ interviewAskStream threw:', (err as Error).message)
+        console.log('[Pipeline STAGE 8] ✗ sendToAI error:', (err as Error).message)
         setError((err as Error).message)
       } finally {
         setProcessing(false)
