@@ -8,7 +8,7 @@ import { authMiddleware, verifyToken } from '../middleware/auth'
 import { DeepgramClient } from '@deepgram/sdk'
 import { initUserSession, generateAnswer, generateAnswerStream, endUserSession, hasActiveSession } from '../services/gemini'
 import { initCodeAnalysisSession, analyzeScreenContent, endCodeAnalysisSession } from '../services/codeAnalysis'
-import { getResumeSignedUrl } from '../services/cloudinary'
+// cloudinary import removed — using direct secure_url for resume download
 
 interface AuthRequest extends FastifyRequest {
   user: { userId: string; email: string }
@@ -257,10 +257,9 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
     if (!resumeText && profile?.resumeUrl) {
       request.log.info({ userId }, 'resumeText missing — fetching and extracting from Cloudinary URL')
       try {
-        // Use a signed URL so Cloudinary allows server-side raw file download
-        const signedUrl = getResumeSignedUrl(profile.resumeUrl)
-        console.log(`[ResumeExtract] Fetching signed URL (first 80 chars): ${signedUrl.slice(0, 80)}`)
-        const buffer = await fetchBuffer(signedUrl)
+        // Use the direct Cloudinary URL — same approach the /profile/resume endpoint uses successfully
+        console.log(`[ResumeExtract] Fetching direct URL (first 100 chars): ${profile.resumeUrl.slice(0, 100)}`)
+        const buffer = await fetchBuffer(profile.resumeUrl)
         console.log(`[ResumeExtract] Fetched OK — size=${buffer.length} firstBytes="${buffer.slice(0, 4).toString()}"`)
         const extracted = await extractPdfText(buffer)
         if (extracted) {
