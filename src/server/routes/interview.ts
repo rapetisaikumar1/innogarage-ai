@@ -256,8 +256,9 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
     if (!resumeText && profile?.resumeUrl) {
       request.log.info({ userId }, 'resumeText missing — fetching and extracting from Cloudinary URL')
       try {
+        console.log(`[ResumeExtract] Fetching URL: ${profile.resumeUrl}`)
         const buffer = await fetchBuffer(profile.resumeUrl)
-        request.log.info({ userId, bufferSize: buffer.length, firstBytes: buffer.slice(0,4).toString() }, 'PDF fetched from Cloudinary')
+        console.log(`[ResumeExtract] Fetched OK — size=${buffer.length} firstBytes="${buffer.slice(0,4).toString()}"`)
         const extracted = await extractPdfText(buffer)
         if (extracted) {
           resumeText = extracted
@@ -271,7 +272,8 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
           request.log.warn({ userId }, 'PDF fetch succeeded but text extraction returned empty')
         }
       } catch (err) {
-        request.log.error({ err, userId, errorMessage: (err as Error).message, errorStack: (err as Error).stack?.split('\n').slice(0,3).join(' | ') }, 'Failed to auto-extract resumeText — continuing without it')
+        console.error(`[ResumeExtract] FAILED: ${(err as Error).message}`)
+        request.log.error({ userId }, 'Failed to auto-extract resumeText — continuing without it')
       }
     }
 
