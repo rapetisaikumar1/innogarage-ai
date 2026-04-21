@@ -147,33 +147,102 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, maxAttempts = 3): Promi
     } catch (err) {
       lastErr = err
       if (!isTransient(err) || attempt === maxAttempts) throw err
-      console.warn(`[Gemini] transient error on attempt ${attempt}, retrying in 1000ms:`, (err as Error).message)
-      await new Promise(r => setTimeout(r, 1000))
+      const delay = 600 * attempt  // 600ms, 1200ms, ...
+      console.warn(`[Gemini] transient error on attempt ${attempt}, retrying in ${delay}ms:`, (err as Error).message)
+      await new Promise(r => setTimeout(r, delay))
     }
   }
   throw lastErr
 }
+
+// Wraps a promise with a wall-clock timeout
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timeout: ${label} exceeded ${ms}ms`)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer!))
+}
+
+const STREAM_TIMEOUT_MS = 15_000
+const MAX_STREAM_ATTEMPTS = 3
+const STREAM_BACKOFF_MS = [0, 600, 1500]
 
 export async function generateAnswer(userId: string, question: string): Promise<string> {
   const session = userSessions.get(userId)
   if (!session) {
     throw new Error('No active interview session. Please start an interview first.')
   }
-
   const result = await retryWithBackoff(() => session.sendMessage(question))
   return result.response.text()
 }
 
-export async function* generateAnswerStream(userId: string, question: string): AsyncGenerator<string> {
+export async function* generateAnswerStream(
+  userId: string,
+  question: string,
+  utteranceId?: string
+): AsyncGenerator<string> {
   const session = userSessions.get(userId)
   if (!session) {
     throw new Error('No active interview session. Please start an interview first.')
   }
 
-  const result = await session.sendMessageStream(question)
-  for await (const chunk of result.stream) {
-    const text = chunk.text()
+  // Stream with exponential backoff retry
+  for (let attempt = 1; attempt <= MAX_STREAM_ATTEMPTS; attempt++) {
+    const delay = STREAM_BACKOFF_MS[attempt - 1] ?? 1500
+    if (delay > 0) {
+      console.warn(`[Gemini] stream retry attempt ${attempt}/${MAX_STREAM_ATTEMPTS} in ${delay}ms`, { userId, utteranceId })
+      await new Promise(r => setTimeout(r, delay))
+    }
+
+    let chunksYielded = 0
+    try {
+      const streamResult = await withTimeout(
+        session.sendMessageStream(question),
+        STREAM_TIMEOUT_MS,
+        'sendMessageStream'
+      )
+      for await (const chunk of streamResult.stream) {
+        const text = chunk.text()
+        if (text) { chunksYielded++; yield text }
+      }
+      return  // success
+
+    } catch (err) {
+      console.error('[Gemini] stream attempt failed', {
+        userId,
+        utteranceId,
+        attempt,
+        chunksYielded,
+        error: (err as Error).message,
+        stack: ((err as Error).stack ?? '').split('\n').slice(0, 5).join('\n')
+      })
+      // Partial text already sent — cannot retry cleanly
+      if (chunksYielded > 0) throw err
+      // Permanent error — don't retry
+      if (!isTransient(err)) throw err
+      // More attempts remaining — retry
+      if (attempt < MAX_STREAM_ATTEMPTS) continue
+    }
+  }
+
+  // Non-streaming fallback — all stream attempts exhausted
+  console.warn('[Gemini] all stream attempts failed, falling back to sendMessage', { userId, utteranceId })
+  try {
+    const fallback = await withTimeout(
+      retryWithBackoff(() => session.sendMessage(question), 2),
+      STREAM_TIMEOUT_MS,
+      'sendMessage fallback'
+    )
+    const text = fallback.response.text()
     if (text) yield text
+  } catch (err) {
+    console.error('[Gemini] non-streaming fallback also failed', {
+      userId,
+      utteranceId,
+      error: (err as Error).message
+    })
+    throw new Error('The AI service is temporarily unavailable. Please try again.')
   }
 }
 

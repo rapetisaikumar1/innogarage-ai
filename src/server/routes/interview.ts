@@ -285,6 +285,9 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: 'No active interview session' })
     }
 
+    const utteranceId = crypto.randomUUID()
+    request.log.info({ userId, utteranceId, textLength: text.trim().length }, 'interview/ask received')
+
     reply.hijack()
     const raw = reply.raw
     raw.writeHead(200, {
@@ -296,13 +299,13 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
     raw.write('\n')
 
     try {
-      for await (const chunk of generateAnswerStream(userId, text.trim())) {
+      for await (const chunk of generateAnswerStream(userId, text.trim(), utteranceId)) {
         raw.write(`data: ${JSON.stringify({ text: chunk })}\n\n`)
       }
       raw.write('data: [DONE]\n\n')
     } catch (err) {
-      request.log.error({ err }, 'generateAnswerStream failed')
-      const msg = (err as Error).message || 'AI service temporarily unavailable.'
+      request.log.error({ err, userId, utteranceId }, 'generateAnswerStream failed')
+      const msg = (err as Error).message || 'The AI service is temporarily unavailable. Please try again.'
       raw.write(`data: ${JSON.stringify({ error: msg })}\n\n`)
     } finally {
       raw.end()
