@@ -1,5 +1,7 @@
 import { FastifyInstance, FastifyRequest } from 'fastify'
 import { eq } from 'drizzle-orm'
+import https from 'https'
+import http from 'http'
 import { getDb } from '../db'
 import { users, profiles } from '../db/schema'
 import { authMiddleware, verifyToken } from '../middleware/auth'
@@ -9,6 +11,41 @@ import { initCodeAnalysisSession, analyzeScreenContent, endCodeAnalysisSession }
 
 interface AuthRequest extends FastifyRequest {
   user: { userId: string; email: string }
+}
+
+// Fetch a URL and return it as a Buffer (follows redirects)
+function fetchBuffer(url: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const get = (u: string) => {
+      const lib = u.startsWith('https') ? https : http
+      lib.get(u, (res) => {
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          return get(res.headers.location)
+        }
+        if (res.statusCode && res.statusCode >= 400) {
+          return reject(new Error(`HTTP ${res.statusCode} fetching resume`))
+        }
+        const chunks: Buffer[] = []
+        res.on('data', (c: Buffer) => chunks.push(c))
+        res.on('end', () => resolve(Buffer.concat(chunks)))
+        res.on('error', reject)
+      }).on('error', reject)
+    }
+    get(url)
+  })
+}
+
+// Extract text from a PDF buffer using pdf-parse v2
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  try {
+    const { PDFParse } = await import('pdf-parse')
+    const parser = new PDFParse({ data: buffer })
+    const result = await parser.getText()
+    await parser.destroy()
+    return result.text.trim()
+  } catch {
+    return ''
+  }
 }
 
 export async function interviewRoutes(app: FastifyInstance): Promise<void> {
@@ -213,11 +250,34 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
       jobRole: profile?.jobRole ?? null
     }, '[DEBUG] /interview/start — profile data from DB')
 
+    // ── Auto-extract resumeText if missing but resumeUrl exists ───────────
+    let resumeText = profile?.resumeText ?? null
+    if (!resumeText && profile?.resumeUrl) {
+      request.log.info({ userId }, 'resumeText missing — fetching and extracting from Cloudinary URL')
+      try {
+        const buffer = await fetchBuffer(profile.resumeUrl)
+        const extracted = await extractPdfText(buffer)
+        if (extracted) {
+          resumeText = extracted
+          // Save back to DB so future sessions don't need to re-fetch
+          await getDb()
+            .update(profiles)
+            .set({ resumeText: extracted, updatedAt: new Date() })
+            .where(eq(profiles.userId, userId))
+          request.log.info({ userId, resumeTextLength: extracted.length }, 'resumeText extracted and saved to DB')
+        } else {
+          request.log.warn({ userId }, 'PDF fetch succeeded but text extraction returned empty')
+        }
+      } catch (err) {
+        request.log.error({ err, userId }, 'Failed to auto-extract resumeText — continuing without it')
+      }
+    }
+
     await initUserSession(userId, {
       name: user.name,
       email: user.email,
       resumeUrl: profile?.resumeUrl ?? null,
-      resumeText: profile?.resumeText ?? null,
+      resumeText,
       jobDescription: profile?.jobDescription ?? null,
       jobRole: profile?.jobRole ?? null,
       experience: profile?.experience ?? null,
@@ -230,7 +290,7 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
     // Initialize code analysis session with user context
     await initCodeAnalysisSession(userId, {
       name: user.name,
-      resumeText: profile?.resumeText ?? null,
+      resumeText,
       jobDescription: profile?.jobDescription ?? null,
       jobRole: profile?.jobRole ?? null,
       experience: profile?.experience ?? null,
