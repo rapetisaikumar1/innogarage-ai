@@ -242,7 +242,7 @@ export async function* generateAnswerStream(userId: string, question: string): A
   }
   console.log(`[Gemini] generateAnswerStream — sending question: "${question.slice(0, 80)}..."`)
 
-  const MAX_ATTEMPTS = 5
+  const MAX_ATTEMPTS = 8
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     let chunksYielded = 0
     try {
@@ -264,7 +264,7 @@ export async function* generateAnswerStream(userId: string, question: string): A
       }
       // No content sent yet — safe to retry
       if (!isTransient(err) || attempt === MAX_ATTEMPTS) throw err
-      const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000)
+      const delay = Math.min(1000 * Math.pow(2, attempt - 1), 16000)
       console.warn(`[Gemini] transient error on attempt ${attempt}, retrying in ${delay}ms:`, (err as Error).message)
       await new Promise(r => setTimeout(r, delay))
     }
