@@ -15,20 +15,37 @@ function ensureConfig(): void {
   }
 }
 
-// Minimal ZIP local-file extractor — reads first file entry from a ZIP buffer.
-// Handles both DEFLATE (method 8) and STORED (method 0) entries.
+// Minimal ZIP extractor using Central Directory (handles streaming ZIPs with data descriptors).
+// Cloudinary ZIPs have sizes as zero in local file headers — must read from central directory.
 function extractFirstFileFromZip(buf: Buffer): Buffer {
-  // Local file header signature: 0x04034b50 (little-endian: 50 4b 03 04)
-  const sig = Buffer.from([0x50, 0x4b, 0x03, 0x04])
-  const idx = buf.indexOf(sig)
-  if (idx === -1) throw new Error('ZIP: no local file header found')
-  const method = buf.readUInt16LE(idx + 8)
-  const compressedSize = buf.readUInt32LE(idx + 18)
-  const filenameLen = buf.readUInt16LE(idx + 26)
-  const extraLen = buf.readUInt16LE(idx + 28)
-  const dataStart = idx + 30 + filenameLen + extraLen
+  // Locate End of Central Directory Record (EOCD): signature 0x50 0x4b 0x05 0x06
+  const eocdSig = Buffer.from([0x50, 0x4b, 0x05, 0x06])
+  let eocdOffset = -1
+  for (let i = buf.length - 22; i >= 0; i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) { eocdOffset = i; break }
+  }
+  if (eocdOffset === -1) throw new Error('ZIP: EOCD not found')
+
+  const cdOffset = buf.readUInt32LE(eocdOffset + 16) // offset of first central directory entry
+
+  // Central directory entry signature: 0x50 0x4b 0x01 0x02
+  if (buf.readUInt32LE(cdOffset) !== 0x02014b50) throw new Error('ZIP: central directory signature mismatch')
+
+  const method         = buf.readUInt16LE(cdOffset + 10)
+  const compressedSize = buf.readUInt32LE(cdOffset + 20)
+  const lhFilenameLen  = buf.readUInt16LE(cdOffset + 28)
+  const lhExtraLen     = buf.readUInt16LE(cdOffset + 30)
+  const localHdrOffset = buf.readUInt32LE(cdOffset + 42)
+
+  // Local file header: filename length at offset 26, extra field length at offset 28
+  const lfFilenameLen = buf.readUInt16LE(localHdrOffset + 26)
+  const lfExtraLen    = buf.readUInt16LE(localHdrOffset + 28)
+  const dataStart = localHdrOffset + 30 + lfFilenameLen + lfExtraLen
+
+  console.log(`[ZIP] method=${method} compressedSize=${compressedSize} dataStart=${dataStart}`)
   const compressedData = buf.slice(dataStart, dataStart + compressedSize)
-  if (method === 0) return compressedData // STORED
+
+  if (method === 0) return compressedData                    // STORED
   if (method === 8) return zlib.inflateRawSync(compressedData) // DEFLATE
   throw new Error(`ZIP: unsupported compression method ${method}`)
 }
