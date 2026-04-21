@@ -43,7 +43,8 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
     const result = await parser.getText()
     await parser.destroy()
     return result.text.trim()
-  } catch {
+  } catch (err) {
+    console.error('[extractPdfText] FAILED:', (err as Error).message)
     return ''
   }
 }
@@ -256,6 +257,7 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
       request.log.info({ userId }, 'resumeText missing — fetching and extracting from Cloudinary URL')
       try {
         const buffer = await fetchBuffer(profile.resumeUrl)
+        request.log.info({ userId, bufferSize: buffer.length, firstBytes: buffer.slice(0,4).toString() }, 'PDF fetched from Cloudinary')
         const extracted = await extractPdfText(buffer)
         if (extracted) {
           resumeText = extracted
@@ -269,7 +271,7 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
           request.log.warn({ userId }, 'PDF fetch succeeded but text extraction returned empty')
         }
       } catch (err) {
-        request.log.error({ err, userId }, 'Failed to auto-extract resumeText — continuing without it')
+        request.log.error({ err, userId, errorMessage: (err as Error).message, errorStack: (err as Error).stack?.split('\n').slice(0,3).join(' | ') }, 'Failed to auto-extract resumeText — continuing without it')
       }
     }
 
