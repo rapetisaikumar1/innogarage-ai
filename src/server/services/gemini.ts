@@ -242,16 +242,32 @@ export async function* generateAnswerStream(userId: string, question: string): A
   }
   console.log(`[Gemini] generateAnswerStream — sending question: "${question.slice(0, 80)}..."`)
 
-  const streamResult = await retryWithBackoff(() => session.sendMessageStream(question))
-  try {
-    for await (const chunk of streamResult.stream) {
-      const text = chunk.text()
-      if (text) yield text
+  const MAX_ATTEMPTS = 5
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let chunksYielded = 0
+    try {
+      // sendMessageStream sets up the connection; actual network I/O happens during iteration.
+      // Wrapping both the call AND the iteration in the retry loop ensures transient errors
+      // at any point in the stream are retried — but only if no chunks were sent yet.
+      const streamResult = await session.sendMessageStream(question)
+      for await (const chunk of streamResult.stream) {
+        const text = chunk.text()
+        if (text) { chunksYielded++; yield text }
+      }
+      return // success — generator done
+    } catch (err) {
+      if (chunksYielded > 0) {
+        // Partial content already sent to client — can't unsend chunks, stop gracefully.
+        // The HTTP route will still send [DONE] so the client renders the partial answer.
+        console.warn(`[Gemini] stream interrupted mid-response (${chunksYielded} chunks sent):`, (err as Error).message)
+        return
+      }
+      // No content sent yet — safe to retry
+      if (!isTransient(err) || attempt === MAX_ATTEMPTS) throw err
+      const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000)
+      console.warn(`[Gemini] transient error on attempt ${attempt}, retrying in ${delay}ms:`, (err as Error).message)
+      await new Promise(r => setTimeout(r, delay))
     }
-  } catch (err) {
-    // Mid-stream failure — re-throw so callers know the answer was truncated
-    console.warn('[Gemini] stream interrupted:', (err as Error).message)
-    throw err
   }
 }
 
