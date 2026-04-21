@@ -23,7 +23,6 @@ win:
     - target: nsis
       arch:
         - x64
-        - arm64
 nsis:
   artifactName: ${name}-${version}-${arch}-setup.${ext}
   shortcutName: ${productName}
