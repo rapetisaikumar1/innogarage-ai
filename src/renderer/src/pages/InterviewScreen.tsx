@@ -85,7 +85,7 @@ export default function InterviewScreen(): React.JSX.Element {
       let accumulated = ''
       console.log('[Pipeline STAGE 8] → sending question via WebSocket:', JSON.stringify(text))
       try {
-        await new Promise<void>((resolve, reject) => {
+        const doAsk = (): Promise<void> => new Promise<void>((resolve, reject) => {
           const sentViaWS = sendQuestion(
             text,
             id,
@@ -103,6 +103,22 @@ export default function InterviewScreen(): React.JSX.Element {
             ).then(resolve).catch(reject)
           }
         })
+
+        try {
+          await doAsk()
+        } catch (err) {
+          const msg = (err as Error).message || ''
+          // Session lost (Railway restart) — silently re-init and retry once
+          if (msg.includes('No active interview session')) {
+            console.log('[Pipeline STAGE 8] session lost — re-initializing and retrying')
+            accumulated = ''
+            updateQAPairAnswer(id, '')
+            await api.interviewStart()
+            await doAsk()
+          } else {
+            throw err
+          }
+        }
       } catch (err) {
         console.log('[Pipeline STAGE 8] ✗ sendToAI error:', (err as Error).message)
         setError((err as Error).message)

@@ -78,6 +78,9 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
     // eslint-disable-next-line prefer-const
     let dgConn: { getReadyState: () => number; send: (b: Buffer) => void; requestClose: () => void } | null = null
 
+    // Per-user ask queue — serializes concurrent WS questions so ChatSession is never called concurrently
+    let askQueue: Promise<void> = Promise.resolve()
+
     // Forward raw PCM from renderer → buffer or Deepgram
     // Text frames (isBinary=false) carry JSON control messages (type: 'ask')
     socket.on('message', (data: Buffer, isBinary: boolean) => {
@@ -86,7 +89,8 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
           const msg = JSON.parse(data.toString('utf8')) as { type?: string; questionId?: string; text?: string }
           if (msg.type === 'ask' && msg.questionId && msg.text?.trim()) {
             const { questionId, text } = msg
-            ;(async () => {
+            // Chain onto the queue so concurrent questions are processed one at a time
+            askQueue = askQueue.then(async () => {
               try {
                 for await (const chunk of generateAnswerStream(userId, text.trim())) {
                   if (socket.readyState === 1) socket.send(JSON.stringify({ type: 'ai_chunk', questionId, text: chunk }))
@@ -96,7 +100,7 @@ export async function interviewRoutes(app: FastifyInstance): Promise<void> {
                 request.log.error({ err, questionId }, 'WS AI stream error')
                 if (socket.readyState === 1) socket.send(JSON.stringify({ type: 'ai_error', questionId, message: 'AI service temporarily unavailable.' }))
               }
-            })()
+            })
           }
         } catch { /* ignore malformed JSON */ }
         return

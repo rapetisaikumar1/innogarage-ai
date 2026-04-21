@@ -189,7 +189,7 @@ export async function initUserSession(userId: string, ctx: UserContext): Promise
     systemInstruction: buildSystemPrompt(ctx),
     generationConfig: {
       // @ts-ignore — thinkingConfig supported in gemini-2.5-flash
-      thinkingConfig: { thinkingBudget: 0 }  // no thinking — lowest latency
+      thinkingConfig: { thinkingBudget: 512 }  // minimal thinking — better resume grounding vs pure speed
     }
   })
 
@@ -204,10 +204,10 @@ function isTransient(err: unknown): boolean {
   const msg = (err as Error).message || ''
   return msg.includes('503') || msg.includes('Service Unavailable') ||
          msg.includes('429') || msg.includes('Too Many Requests') ||
-         msg.includes('overloaded')
+         msg.includes('overloaded') || msg.includes('Failed to parse stream')
 }
 
-async function retryWithBackoff<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+async function retryWithBackoff<T>(fn: () => Promise<T>, maxAttempts = 5): Promise<T> {
   let lastErr: unknown
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -215,7 +215,8 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, maxAttempts = 3): Promi
     } catch (err) {
       lastErr = err
       if (!isTransient(err) || attempt === maxAttempts) throw err
-      const delay = attempt === 1 ? 200 : 500
+      // Exponential backoff: 1s, 2s, 4s, 8s
+      const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000)
       console.warn(`[Gemini] transient error on attempt ${attempt}, retrying in ${delay}ms:`, (err as Error).message)
       await new Promise(r => setTimeout(r, delay))
     }
@@ -248,8 +249,9 @@ export async function* generateAnswerStream(userId: string, question: string): A
       if (text) yield text
     }
   } catch (err) {
-    // Mid-stream failure (e.g. 503 mid-response) — log and stop gracefully
+    // Mid-stream failure — re-throw so callers know the answer was truncated
     console.warn('[Gemini] stream interrupted:', (err as Error).message)
+    throw err
   }
 }
 
