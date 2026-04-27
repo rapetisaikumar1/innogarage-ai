@@ -37,7 +37,6 @@ export default function UpdateAccount(): React.JSX.Element {
     interviewType: '',
     company: '',
     language: 'English',
-    endClient: '',
     aiInstructions: ''
   })
   const [resumeFile, setResumeFile] = useState<File | null>(null)
@@ -66,7 +65,6 @@ export default function UpdateAccount(): React.JSX.Element {
           interviewType: res.profile.interviewType || '',
           company: res.profile.company || '',
           language: res.profile.language || 'English',
-          endClient: (res.profile as Record<string, unknown>).endClient as string || '',
           aiInstructions: res.profile.aiInstructions || ''
         })
       }
@@ -356,18 +354,6 @@ export default function UpdateAccount(): React.JSX.Element {
                 setForm({ ...form, company: e.target.value })
                 if (fieldErrors.company) setFieldErrors({ ...fieldErrors, company: '' })
               }}
-            />
-          </div>
-
-          {/* End Client */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">
-              End Client <span className="text-xs text-gray-500 font-normal">(optional)</span>
-            </label>
-            <Input
-              placeholder="e.g., JPMorgan Chase"
-              value={form.endClient}
-              onChange={(e) => setForm({ ...form, endClient: e.target.value })}
             />
           </div>
 

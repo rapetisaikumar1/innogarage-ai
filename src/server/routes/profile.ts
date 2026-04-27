@@ -12,6 +12,33 @@ interface AuthRequest extends FastifyRequest {
   user: { userId: string; email: string }
 }
 
+interface ProfileUpdateBody {
+  jobDescription?: string
+  jobRole?: string
+  experience?: string
+  interviewType?: string
+  company?: string
+  language?: string
+  aiInstructions?: string
+}
+
+function pickProfileUpdates(body: unknown): ProfileUpdateBody {
+  if (!body || typeof body !== 'object') return {}
+
+  const input = body as Record<string, unknown>
+  const next: ProfileUpdateBody = {}
+
+  if (typeof input.jobDescription === 'string') next.jobDescription = input.jobDescription
+  if (typeof input.jobRole === 'string') next.jobRole = input.jobRole
+  if (typeof input.experience === 'string') next.experience = input.experience
+  if (typeof input.interviewType === 'string') next.interviewType = input.interviewType
+  if (typeof input.company === 'string') next.company = input.company
+  if (typeof input.language === 'string') next.language = input.language
+  if (typeof input.aiInstructions === 'string') next.aiInstructions = input.aiInstructions
+
+  return next
+}
+
 async function extractResumeText(buffer: Buffer, mimeType: string): Promise<string> {
   try {
     if (mimeType === 'application/pdf') {
@@ -60,27 +87,29 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
   // Update profile
   app.put('/profile', { preHandler: authMiddleware }, async (request) => {
     const { userId } = (request as AuthRequest).user
-    const body = request.body as {
-      jobDescription?: string
-      jobRole?: string
-      experience?: string
-      interviewType?: string
-      company?: string
-      language?: string
-      aiInstructions?: string
+    const body = pickProfileUpdates(request.body)
+    const updateData = {
+      ...body,
+      isUpdated: true,
+      updatedAt: new Date()
     }
 
     const [updated] = await getDb()
       .update(profiles)
-      .set({
-        ...body,
-        isUpdated: true,
-        updatedAt: new Date()
-      })
+      .set(updateData)
       .where(eq(profiles.userId, userId))
       .returning()
 
-    return { profile: updated }
+    if (updated) {
+      return { profile: updated }
+    }
+
+    const [created] = await getDb()
+      .insert(profiles)
+      .values({ userId, ...updateData })
+      .returning()
+
+    return { profile: created }
   })
 
   // Upload resume
@@ -112,13 +141,29 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
     console.log(`[Profile] resume upload — mimetype=${data.mimetype} fileSize=${fileBuffer.length}B extractedTextLength=${resumeText.length}`)
     const { url } = await uploadResume(fileBuffer, data.filename)
 
+    const resumeData = {
+      resumeUrl: url,
+      resumeFilename: data.filename,
+      resumeText: resumeText || null,
+      updatedAt: new Date()
+    }
+
     const [updated] = await getDb()
       .update(profiles)
-      .set({ resumeUrl: url, resumeFilename: data.filename, resumeText: resumeText || null, updatedAt: new Date() })
+      .set(resumeData)
       .where(eq(profiles.userId, userId))
       .returning()
 
-    return { profile: updated }
+    if (updated) {
+      return { profile: updated }
+    }
+
+    const [created] = await getDb()
+      .insert(profiles)
+      .values({ userId, ...resumeData, isUpdated: true })
+      .returning()
+
+    return { profile: created }
   })
 
   // Proxy resume — streams content from Cloudinary server-to-server via Node https
