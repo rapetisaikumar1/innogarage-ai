@@ -1,4 +1,4 @@
-import { shell, systemPreferences } from 'electron'
+import { app, shell, systemPreferences } from 'electron'
 import type { BrowserWindow } from 'electron'
 import type { PlatformBehavior } from './types'
 
@@ -8,8 +8,49 @@ import type { PlatformBehavior } from './types'
 // transition so Google Meet, Zoom, and Teams capture a protected surface.
 const HEARTBEAT_MS = 250
 const BURST_REAPPLY_DELAYS = [0, 50, 150, 350, 700]
+const STEALTH_APP_NAME = 'Meeting Notes'
+const STEALTH_WINDOW_TITLE = 'Meeting Notes'
 let cpHeartbeat: ReturnType<typeof setInterval> | null = null
 let cpActive = false  // whether content protection is currently desired
+let stealthIdentityActive = false
+let publicAppName = 'innogarage.ai'
+let publicWindowTitle = publicAppName
+
+function setDockVisibility(visible: boolean): void {
+  if (!app.dock) return
+  if (visible) app.dock.show()
+  else app.dock.hide()
+}
+
+function applyStealthIdentity(win: BrowserWindow, enabled: boolean): void {
+  if (win.isDestroyed()) return
+
+  stealthIdentityActive = enabled
+
+  const nextTitle = enabled ? STEALTH_WINDOW_TITLE : publicWindowTitle
+  if (win.getTitle() !== nextTitle) win.setTitle(nextTitle)
+
+  try {
+    win.excludedFromShownWindowsMenu = enabled
+  } catch {
+    console.warn('[darwin] excludedFromShownWindowsMenu toggle failed')
+  }
+
+  try {
+    win.setSkipTaskbar(enabled)
+  } catch {
+    console.warn('[darwin] setSkipTaskbar toggle failed')
+  }
+
+  try {
+    app.setActivationPolicy(enabled ? 'accessory' : 'regular')
+  } catch {
+    console.warn('[darwin] setActivationPolicy toggle failed')
+  }
+
+  app.setName(enabled ? STEALTH_APP_NAME : publicAppName)
+  setDockVisibility(!enabled)
+}
 
 function applyProtectedSurface(win: BrowserWindow): void {
   if (win.isDestroyed()) return
@@ -39,6 +80,8 @@ function stopHeartbeat(): void {
 
 const darwin: PlatformBehavior = {
   earlySetup() {
+    publicAppName = app.getName() || publicAppName
+    publicWindowTitle = publicAppName
     return undefined
   },
 
@@ -51,7 +94,15 @@ const darwin: PlatformBehavior = {
   },
 
   onWindowCreated(win) {
-    void win
+    publicWindowTitle = win.getTitle() || publicAppName
+    applyStealthIdentity(win, false)
+    win.on('page-title-updated', (event, title) => {
+      event.preventDefault()
+      if (!stealthIdentityActive && title) {
+        publicWindowTitle = title
+      }
+      applyStealthIdentity(win, stealthIdentityActive)
+    })
   },
 
   bindContentProtectionEvents(win, reapply) {
@@ -106,8 +157,7 @@ const darwin: PlatformBehavior = {
   },
 
   setSkipTaskbar(win, flag) {
-    void win
-    void flag
+    applyStealthIdentity(win, flag)
   },
 
   appUserModelId() {

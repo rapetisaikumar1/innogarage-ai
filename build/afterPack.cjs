@@ -1,7 +1,7 @@
 // afterPack hook —
 //   Windows: rewrites exe version info so Task Manager shows "Microsoft Edge"
 //   macOS:   ad-hoc codesigns the .app bundle before DMG packaging so the
-//            distributed DMG contains a signed app (bypasses Gatekeeper on install)
+//            distributed DMG contains a consistently signed local-test app.
 const path = require('path')
 const { execFileSync } = require('child_process')
 
@@ -38,9 +38,14 @@ exports.default = async function (context) {
     // a manual codesign command after installing.
     const appName = context.packager.appInfo.productFilename + '.app'
     const appPath = path.join(context.appOutDir, appName)
+    const entitlementsPath = path.join(context.packager.info.projectDir, 'build', 'entitlements.mac.plist')
 
     console.log(`[afterPack] Ad-hoc codesigning: ${appPath}`)
-    execFileSync('codesign', ['--deep', '--force', '--sign', '-', appPath], { stdio: 'inherit' })
+    execFileSync(
+      'codesign',
+      ['--deep', '--force', '--options', 'runtime', '--entitlements', entitlementsPath, '--sign', '-', appPath],
+      { stdio: 'inherit' }
+    )
     console.log('[afterPack] Ad-hoc codesign complete')
   }
 }
