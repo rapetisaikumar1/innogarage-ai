@@ -2,17 +2,16 @@ import { app, shell } from 'electron'
 import type { PlatformBehavior } from './types'
 import icon from '../../../resources/icon.png?asset'
 
+const APP_USER_MODEL_ID = 'com.innogarage.meeting-notes'
+const PUBLIC_WINDOW_TITLE = 'innogarage.ai'
+const STEALTH_WINDOW_TITLE = 'Meeting Notes'
+
 const win32: PlatformBehavior = {
   earlySetup() {
-    // Stealth App User Model ID — shows "Microsoft Edge" in Task Manager.
-    // NOTE: do NOT call app.disableHardwareAcceleration() — it breaks
-    // SetWindowDisplayAffinity which is required for screen capture hiding.
-    app.setAppUserModelId('Microsoft.Edge')
+    app.setAppUserModelId(APP_USER_MODEL_ID)
   },
 
   windowOptions() {
-    // Transparent windows (WS_EX_LAYERED) are incompatible with
-    // SetWindowDisplayAffinity. Use opaque window + setOpacity() for overlay.
     return {
       transparent: false,
       backgroundColor: '#1a1a2e',
@@ -21,8 +20,7 @@ const win32: PlatformBehavior = {
   },
 
   onWindowCreated(win) {
-    // Generic title so Task Manager doesn't expose the app
-    win.setTitle('Microsoft Edge')
+    win.setTitle(PUBLIC_WINDOW_TITLE)
   },
 
   bindContentProtectionEvents(win, reapply) {
@@ -42,22 +40,20 @@ const win32: PlatformBehavior = {
   },
 
   applyOverlayMode(win, enabled) {
-    // Can't use transparent bg (breaks SetWindowDisplayAffinity).
-    // Use window opacity to let the user see through the app.
     win.setOpacity(enabled ? 0.85 : 1.0)
   },
 
   setAlwaysOnTop(win, flag) {
     win.setAlwaysOnTop(flag, 'screen-saver')
-    // Note: setAlwaysOnTop can reset display affinity — caller re-schedules CP
   },
 
   setSkipTaskbar(win, flag) {
     win.setSkipTaskbar(flag)
+    win.setTitle(flag ? STEALTH_WINDOW_TITLE : PUBLIC_WINDOW_TITLE)
   },
 
   appUserModelId() {
-    return 'Microsoft.Edge'
+    return APP_USER_MODEL_ID
   },
 
   shouldQuitOnAllClosed() {

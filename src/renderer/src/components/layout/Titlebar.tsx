@@ -146,10 +146,14 @@ export default function Titlebar(): React.JSX.Element {
     syncMaximized()
   }, [location.pathname])
 
-  // Auto-enable private mode when on interview screen, restore public on exit
+  // Auto-enable stealth mode when on the interview screen, restore public on exit.
   useEffect(() => {
-    window.api.setContentProtection(isPrivate)
-    window.api.setSkipTaskbar(isPrivate)
+    window.api.setStealthMode(isPrivate)
+    document.body.classList.toggle('overlay-mode', isPrivate)
+
+    return () => {
+      document.body.classList.remove('overlay-mode')
+    }
   }, [isPrivate])
 
   // Interview timer
@@ -200,8 +204,6 @@ export default function Titlebar(): React.JSX.Element {
   const handlePrivacyToggle = (): void => {
     const next = !isPrivate
     setPrivacyOverride({ key: location.key, enabled: next })
-    window.api.setContentProtection(next)
-    window.api.setSkipTaskbar(next)
   }
 
   const handleExitInterview = (): void => {

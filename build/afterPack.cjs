@@ -1,5 +1,5 @@
 // afterPack hook —
-//   Windows: rewrites exe version info so Task Manager shows "Microsoft Edge"
+//   Windows: keeps exe metadata aligned with the neutral meeting-window identity
 //   macOS:   ad-hoc codesigns the .app bundle before DMG packaging so the
 //            distributed DMG contains a consistently signed local-test app.
 const path = require('path')
@@ -18,12 +18,12 @@ exports.default = async function (context) {
       const { rcedit } = await import('rcedit')
       await rcedit(exePath, {
         'version-string': {
-          FileDescription: 'Microsoft Edge',
-          ProductName: 'Microsoft Edge',
-          CompanyName: 'Microsoft Corporation',
-          LegalCopyright: 'Copyright Microsoft Corporation. All rights reserved.',
-          InternalName: 'msedge',
-          OriginalFilename: 'msedge.exe'
+          FileDescription: 'Meeting Notes',
+          ProductName: 'Meeting Notes',
+          CompanyName: 'innogarage.ai',
+          LegalCopyright: 'Copyright innogarage.ai. All rights reserved.',
+          InternalName: 'meeting-notes',
+          OriginalFilename: 'meeting-notes.exe'
         }
       })
       console.log('[afterPack] Version info patched successfully')

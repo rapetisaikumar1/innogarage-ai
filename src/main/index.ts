@@ -12,26 +12,58 @@ platform.earlySetup()
 let mainWindow: BrowserWindow | null = null
 
 // ── Content protection state ────────────────────────────────────────────────
+const STEALTH_REAPPLY_DELAYS_MS = [0, 120, 500]
 let desiredContentProtection = false
-let cpTimer: ReturnType<typeof setTimeout> | null = null
+let cpTimers: ReturnType<typeof setTimeout>[] = []
 
 function applyDesiredContentProtection(): void {
-  if (!mainWindow) return
+  if (!mainWindow || mainWindow.isDestroyed()) return
   platform.applyContentProtection(mainWindow, desiredContentProtection)
 }
 
-function scheduleContentProtection(delayMs?: number): void {
-  const delay = delayMs ?? platform.contentProtectionDelay()
-  if (cpTimer) clearTimeout(cpTimer)
-  if (delay <= 0) {
-    cpTimer = null
+function clearContentProtectionTimers(): void {
+  for (const timer of cpTimers) clearTimeout(timer)
+  cpTimers = []
+}
+
+function scheduleContentProtection(delayMs = platform.contentProtectionDelay()): void {
+  if (!desiredContentProtection) return
+  if (delayMs <= 0) {
     applyDesiredContentProtection()
     return
   }
-  cpTimer = setTimeout(() => {
-    cpTimer = null
+
+  const timer = setTimeout(() => {
+    cpTimers = cpTimers.filter((entry) => entry !== timer)
     applyDesiredContentProtection()
-  }, delay)
+  }, delayMs)
+  cpTimers.push(timer)
+}
+
+function reapplyContentProtection(): void {
+  clearContentProtectionTimers()
+  for (const delay of STEALTH_REAPPLY_DELAYS_MS) scheduleContentProtection(delay)
+}
+
+function setStealthMode(enabled: boolean): void {
+  desiredContentProtection = enabled
+  if (!mainWindow) return
+
+  clearContentProtectionTimers()
+
+  if (enabled) {
+    platform.applyContentProtection(mainWindow, true)
+    platform.setSkipTaskbar(mainWindow, true)
+    platform.setAlwaysOnTop(mainWindow, true)
+    platform.applyOverlayMode(mainWindow, true)
+    reapplyContentProtection()
+    return
+  }
+
+  platform.applyOverlayMode(mainWindow, false)
+  platform.setAlwaysOnTop(mainWindow, false)
+  platform.setSkipTaskbar(mainWindow, false)
+  platform.applyContentProtection(mainWindow, false)
 }
 
 // ── Window creation ─────────────────────────────────────────────────────────
@@ -57,8 +89,16 @@ function createWindow(): void {
     mainWindow?.show()
   })
 
+  mainWindow.on('closed', () => {
+    if (mainWindow?.isDestroyed()) {
+      mainWindow = null
+      desiredContentProtection = false
+      clearContentProtectionTimers()
+    }
+  })
+
   platform.bindContentProtectionEvents(mainWindow, () => {
-    if (desiredContentProtection) scheduleContentProtection(0)
+    if (desiredContentProtection) reapplyContentProtection()
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -83,28 +123,8 @@ ipcMain.on('window:maximize', () => {
 ipcMain.on('window:close', () => mainWindow?.close())
 ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized())
 
-ipcMain.on('window:setAlwaysOnTop', (_event, flag: boolean) => {
-  if (!mainWindow) return
-  platform.setAlwaysOnTop(mainWindow, flag)
-  if (desiredContentProtection) scheduleContentProtection(150)
-})
-
-ipcMain.on('window:setSkipTaskbar', (_event, flag: boolean) => {
-  if (mainWindow) platform.setSkipTaskbar(mainWindow, flag)
-})
-
-// ── Content protection state ────────────────────────────────────────────────
-// (scheduleContentProtection defined above createWindow)
-
-ipcMain.on('window:setOverlayMode', (_event, flag: boolean) => {
-  if (!mainWindow) return
-  platform.applyOverlayMode(mainWindow, flag)
-  scheduleContentProtection()
-})
-
-ipcMain.on('window:setContentProtection', (_event, flag: boolean) => {
-  desiredContentProtection = flag
-  scheduleContentProtection()
+ipcMain.on('window:setStealthMode', (_event, flag: boolean) => {
+  setStealthMode(flag)
 })
 
 // Open external links
@@ -341,5 +361,6 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  clearContentProtectionTimers()
   platform.cleanup()
 })

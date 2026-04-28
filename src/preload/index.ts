@@ -21,10 +21,7 @@ const api = {
     ipcRenderer.invoke('audio:get-screen-permission-status'),
   openScreenSettings: (): Promise<void> =>
     ipcRenderer.invoke('audio:open-screen-settings'),
-  setAlwaysOnTop: (flag: boolean): void => ipcRenderer.send('window:setAlwaysOnTop', flag),
-  setOverlayMode: (flag: boolean): void => ipcRenderer.send('window:setOverlayMode', flag),
-  setContentProtection: (flag: boolean): void => ipcRenderer.send('window:setContentProtection', flag),
-  setSkipTaskbar: (flag: boolean): void => ipcRenderer.send('window:setSkipTaskbar', flag)
+  setStealthMode: (flag: boolean): void => ipcRenderer.send('window:setStealthMode', flag)
 }
 
 if (process.contextIsolated) {

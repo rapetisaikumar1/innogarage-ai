@@ -16,10 +16,7 @@ interface WindowAPI {
   getDesktopAudioSourceId: () => Promise<string | null>
   getScreenPermissionStatus: () => Promise<string>
   openScreenSettings: () => Promise<void>
-  setAlwaysOnTop: (flag: boolean) => void
-  setOverlayMode: (flag: boolean) => void
-  setContentProtection: (flag: boolean) => void
-  setSkipTaskbar: (flag: boolean) => void
+  setStealthMode: (flag: boolean) => void
 }
 
 declare global {

@@ -15,7 +15,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: msedge-helper
+  executableName: meeting-notes
   icon: resources/icon.png
   # Run as current user (no UAC elevation required for audio/screen capture)
   requestedExecutionLevel: asInvoker

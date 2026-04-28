@@ -197,16 +197,6 @@ export default function InterviewScreen(): React.JSX.Element {
           console.error('[ScreenCapture] Failed to start:', (err as Error).message)
         }
 
-        // Bring interview window to front of all applications
-        // Platform modules handle ordering internally (e.g. Windows applies
-        // content protection before setAlwaysOnTop to avoid WDA resets)
-        window.api.setContentProtection(true)
-        window.api.setSkipTaskbar(true)
-        window.api.setAlwaysOnTop(true)
-        // Enable overlay/transparent mode
-        document.body.classList.add('overlay-mode')
-        window.api.setOverlayMode(true)
-
         if (mounted) setInterviewActive(true)
         if (mounted) sessionStartedRef.current = true
       } catch (err) {
@@ -244,12 +234,6 @@ export default function InterviewScreen(): React.JSX.Element {
         stopAudioPipeline()
         stopScreenCapture()
         api.interviewEnd().catch(() => {})
-        // Platform modules handle the correct teardown order internally
-        window.api.setContentProtection(false)
-        window.api.setSkipTaskbar(false)
-        window.api.setAlwaysOnTop(false)
-        document.body.classList.remove('overlay-mode')
-        window.api.setOverlayMode(false)
         sessionStartedRef.current = false
       }
     }
