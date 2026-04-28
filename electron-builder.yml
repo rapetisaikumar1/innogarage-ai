@@ -34,10 +34,8 @@ nsis:
   # Install per-user (no admin rights needed)
   perMachine: false
 mac:
-  hardenedRuntime: true
+  hardenedRuntime: false
   identity: null
-  entitlements: build/entitlements.mac.plist
-  entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     CFBundleDisplayName: Meeting Notes
     CFBundleName: Meeting Notes

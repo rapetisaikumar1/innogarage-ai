@@ -38,12 +38,10 @@ exports.default = async function (context) {
     // a manual codesign command after installing.
     const appName = context.packager.appInfo.productFilename + '.app'
     const appPath = path.join(context.appOutDir, appName)
-    const entitlementsPath = path.join(context.packager.info.projectDir, 'build', 'entitlements.mac.plist')
-
     console.log(`[afterPack] Ad-hoc codesigning: ${appPath}`)
     execFileSync(
       'codesign',
-      ['--deep', '--force', '--options', 'runtime', '--entitlements', entitlementsPath, '--sign', '-', appPath],
+      ['--deep', '--force', '--sign', '-', appPath],
       { stdio: 'inherit' }
     )
     console.log('[afterPack] Ad-hoc codesign complete')

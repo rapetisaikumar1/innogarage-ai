@@ -63,13 +63,16 @@ const darwin: PlatformBehavior = {
 
   onWindowCreated(win) {
     publicWindowTitle = win.getTitle() || publicWindowTitle
-    applyStealthIdentity(win, false)
     win.on('page-title-updated', (event, title) => {
       event.preventDefault()
-      if (!stealthIdentityActive && title) {
+      if (title) {
         publicWindowTitle = title
       }
-      applyStealthIdentity(win, stealthIdentityActive)
+      if (stealthIdentityActive) {
+        applyStealthIdentity(win, true)
+      } else if (win.getTitle() !== publicWindowTitle) {
+        win.setTitle(publicWindowTitle)
+      }
     })
   },
 

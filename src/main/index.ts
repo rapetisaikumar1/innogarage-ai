@@ -14,6 +14,7 @@ let mainWindow: BrowserWindow | null = null
 // ── Content protection state ────────────────────────────────────────────────
 const STEALTH_REAPPLY_DELAYS_MS = [0, 120, 500]
 let desiredContentProtection = false
+let stealthModeEnabled = false
 let cpTimers: ReturnType<typeof setTimeout>[] = []
 
 function applyDesiredContentProtection(): void {
@@ -46,12 +47,15 @@ function reapplyContentProtection(): void {
 }
 
 function setStealthMode(enabled: boolean): void {
+  if (enabled === stealthModeEnabled) return
+
   desiredContentProtection = enabled
   if (!mainWindow) return
 
   clearContentProtectionTimers()
 
   if (enabled) {
+    stealthModeEnabled = true
     platform.applyContentProtection(mainWindow, true)
     platform.setSkipTaskbar(mainWindow, true)
     platform.setAlwaysOnTop(mainWindow, true)
@@ -60,6 +64,7 @@ function setStealthMode(enabled: boolean): void {
     return
   }
 
+  stealthModeEnabled = false
   platform.applyOverlayMode(mainWindow, false)
   platform.setAlwaysOnTop(mainWindow, false)
   platform.setSkipTaskbar(mainWindow, false)
@@ -93,6 +98,7 @@ function createWindow(): void {
     if (mainWindow?.isDestroyed()) {
       mainWindow = null
       desiredContentProtection = false
+      stealthModeEnabled = false
       clearContentProtectionTimers()
     }
   })
