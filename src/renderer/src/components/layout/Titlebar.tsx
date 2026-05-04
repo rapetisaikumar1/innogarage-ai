@@ -156,6 +156,14 @@ export default function Titlebar(): React.JSX.Element {
     }
   }, [isPrivate])
 
+  // Sync stealth state back from main process (e.g. toggled via global shortcut or tray).
+  // This prevents UI being out of sync when stealth is enabled/disabled outside the renderer.
+  useEffect(() => {
+    window.api.onStealthModeChanged((enabled) => {
+      setPrivacyOverride({ key: location.key, enabled })
+    })
+  }, [location.key])
+
   // Interview timer
   useEffect(() => {
     if (isInterviewScreen) {

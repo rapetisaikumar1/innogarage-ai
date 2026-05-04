@@ -1,11 +1,20 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Monitor, Mic, Shield, CheckCircle2, AlertCircle, ArrowRight, Info, ScreenShare } from 'lucide-react'
+import {
+  ArrowLeft,
+  Monitor,
+  Mic,
+  Shield,
+  CheckCircle2,
+  AlertCircle,
+  ArrowRight,
+  Info,
+  ScreenShare
+} from 'lucide-react'
 import Button from '../components/ui/Button'
 import { useAuthStore } from '../store/authStore'
 import {
   screenDeniedMsg as SCREEN_DENIED_MSG,
-  screenStaleMsg as SCREEN_STALE_MSG,
   micDeniedMsg as MIC_DENIED_MSG
 } from '../services/platformMessages'
 
@@ -27,7 +36,7 @@ export default function AudioPermissions(): React.JSX.Element {
     if (!isLoggedIn) {
       navigate('/')
     }
-  }, [isLoggedIn])
+  }, [isLoggedIn, navigate])
 
   // User clicks "Allow" for mic — triggers the OS microphone prompt
   const handleRequestMic = async (): Promise<void> => {
@@ -50,29 +59,22 @@ export default function AudioPermissions(): React.JSX.Element {
     }
   }
 
-  // User clicks "Allow" for system audio — check permission first, only use desktopCapturer when granted
+  // User clicks "Allow" for system audio
+  // triggerScreenPermission() calls getSources() (the only reliable truth on macOS 26 Tahoe)
+  // and returns { granted, sourceId } — we never rely on getMediaAccessStatus()
   const handleRequestSystem = async (): Promise<void> => {
     setSystemLoading(true)
     setSystemError('')
     try {
-      // Check OS-level permission first (no popup)
-      const status = await window.api.getScreenPermissionStatus()
-      if (status !== 'granted') {
-        // Not yet granted → open System Settings directly (single action)
+      const { granted, sourceId } = await window.api.triggerScreenPermission()
+
+      if (!granted || !sourceId) {
         await window.api.openScreenSettings()
         setSystemError(SCREEN_DENIED_MSG)
         setSystemGranted(false)
         return
       }
-      // Permission granted at OS level — try to get a source ID
-      const sourceId = await window.api.getDesktopAudioSourceId()
-      if (!sourceId) {
-        // OS says granted but desktopCapturer returns empty → stale TCC entry
-        await window.api.openScreenSettings()
-        setSystemError(SCREEN_STALE_MSG)
-        setSystemGranted(false)
-        return
-      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           mandatory: {
@@ -107,26 +109,21 @@ export default function AudioPermissions(): React.JSX.Element {
     }
   }
 
-  // User clicks "Allow" for screen capture — check permission first, only use desktopCapturer when granted
+  // User clicks "Allow" for screen capture
+  // Same approach — triggerScreenPermission() uses getSources() as truth (macOS 26 reliable)
   const handleRequestScreen = async (): Promise<void> => {
     setScreenLoading(true)
     setScreenError('')
     try {
-      // Check OS-level permission first (no popup)
-      const status = await window.api.getScreenPermissionStatus()
-      if (status !== 'granted') {
+      const { granted, sourceId } = await window.api.triggerScreenPermission()
+
+      if (!granted || !sourceId) {
         await window.api.openScreenSettings()
         setScreenError(SCREEN_DENIED_MSG)
         setScreenGranted(false)
         return
       }
-      const sourceId = await window.api.getDesktopAudioSourceId()
-      if (!sourceId) {
-        await window.api.openScreenSettings()
-        setScreenError(SCREEN_STALE_MSG)
-        setScreenGranted(false)
-        return
-      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
@@ -193,7 +190,8 @@ export default function AudioPermissions(): React.JSX.Element {
           </div>
           <h1 className="text-2xl font-bold text-white">Permissions</h1>
           <p className="text-sm text-gray-400 mt-2 max-w-md mx-auto">
-            Grant all permissions below so innogarage.ai can capture audio, screen content, and provide real-time AI assistance.
+            Grant all permissions below so innogarage.ai can capture audio, screen content, and
+            provide real-time AI assistance.
           </p>
         </div>
 
@@ -201,9 +199,9 @@ export default function AudioPermissions(): React.JSX.Element {
         <div className="flex items-start gap-3 p-4 rounded-xl bg-blue-500/5 border border-blue-500/20 mb-6">
           <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
           <p className="text-xs text-blue-300/80">
-            Click <strong className="text-blue-300">Allow</strong> on each permission below.
-            Your system will show a permission prompt — you must approve it there.
-            All permissions are required to start the interview.
+            Click <strong className="text-blue-300">Allow</strong> on each permission below. Your
+            system will show a permission prompt — you must approve it there. All permissions are
+            required to start the interview.
           </p>
         </div>
 
@@ -221,9 +219,11 @@ export default function AudioPermissions(): React.JSX.Element {
         {/* Permission Cards */}
         <div className="space-y-4 mb-8">
           {/* Microphone */}
-          <div className={`bg-gray-900/50 border rounded-xl p-5 transition-colors ${
-            micGranted ? 'border-green-500/30' : 'border-gray-800'
-          }`}>
+          <div
+            className={`bg-gray-900/50 border rounded-xl p-5 transition-colors ${
+              micGranted ? 'border-green-500/30' : 'border-gray-800'
+            }`}
+          >
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border border-blue-500/30 flex items-center justify-center shrink-0">
                 <Mic className="w-6 h-6 text-blue-400" />
@@ -245,15 +245,15 @@ export default function AudioPermissions(): React.JSX.Element {
                 </Button>
               )}
             </div>
-            {micError && (
-              <p className="text-xs text-red-400 mt-3 ml-16">{micError}</p>
-            )}
+            {micError && <p className="text-xs text-red-400 mt-3 ml-16">{micError}</p>}
           </div>
 
           {/* System Audio */}
-          <div className={`bg-gray-900/50 border rounded-xl p-5 transition-colors ${
-            systemGranted ? 'border-green-500/30' : 'border-gray-800'
-          }`}>
+          <div
+            className={`bg-gray-900/50 border rounded-xl p-5 transition-colors ${
+              systemGranted ? 'border-green-500/30' : 'border-gray-800'
+            }`}
+          >
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-500/30 flex items-center justify-center shrink-0">
                 <Monitor className="w-6 h-6 text-purple-400" />
@@ -275,15 +275,15 @@ export default function AudioPermissions(): React.JSX.Element {
                 </Button>
               )}
             </div>
-            {systemError && (
-              <p className="text-xs text-red-400 mt-3 ml-16">{systemError}</p>
-            )}
+            {systemError && <p className="text-xs text-red-400 mt-3 ml-16">{systemError}</p>}
           </div>
 
           {/* Screen Capture */}
-          <div className={`bg-gray-900/50 border rounded-xl p-5 transition-colors ${
-            screenGranted ? 'border-green-500/30' : 'border-gray-800'
-          }`}>
+          <div
+            className={`bg-gray-900/50 border rounded-xl p-5 transition-colors ${
+              screenGranted ? 'border-green-500/30' : 'border-gray-800'
+            }`}
+          >
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
                 <ScreenShare className="w-6 h-6 text-emerald-400" />
@@ -305,9 +305,7 @@ export default function AudioPermissions(): React.JSX.Element {
                 </Button>
               )}
             </div>
-            {screenError && (
-              <p className="text-xs text-red-400 mt-3 ml-16">{screenError}</p>
-            )}
+            {screenError && <p className="text-xs text-red-400 mt-3 ml-16">{screenError}</p>}
           </div>
         </div>
 

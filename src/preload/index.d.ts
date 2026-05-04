@@ -9,14 +9,24 @@ interface WindowAPI {
   platform: string
   downloadFile: (url: string) => Promise<void>
   googleAuth: () => Promise<
-    | { type: 'login'; token: string; user: { id: string; name: string; email: string; phone: string | null } }
+    | {
+        type: 'login'
+        token: string
+        user: { id: string; name: string; email: string; phone: string | null }
+      }
     | { type: 'verify'; email: string; name: string; googleId: string }
   >
   googleVerify: (loginHint?: string) => Promise<{ email: string; googleId: string; name: string }>
   getDesktopAudioSourceId: () => Promise<string | null>
   getScreenPermissionStatus: () => Promise<string>
   openScreenSettings: () => Promise<void>
+  triggerScreenPermission: () => Promise<{
+    granted: boolean
+    sourceId: string | null
+    status: string
+  }>
   setStealthMode: (flag: boolean) => void
+  onStealthModeChanged: (callback: (enabled: boolean) => void) => void
 }
 
 declare global {

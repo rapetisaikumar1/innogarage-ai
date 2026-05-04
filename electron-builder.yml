@@ -36,13 +36,15 @@ nsis:
 mac:
   hardenedRuntime: false
   identity: null
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     CFBundleDisplayName: Meeting Notes
     NSCameraUsageDescription: Application requests access to the device's camera.
     NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-    NSScreenCaptureDescription: Meeting Notes needs screen recording to capture system audio.
+    NSScreenCaptureUsageDescription: Meeting Notes needs screen recording access to capture system audio and screen content during interviews.
   notarize: false
   target:
     - target: dmg

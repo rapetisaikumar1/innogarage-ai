@@ -3,7 +3,70 @@
 //   macOS:   ad-hoc codesigns the .app bundle before DMG packaging so the
 //            distributed DMG contains a consistently signed local-test app.
 const path = require('path')
+const fs = require('fs')
 const { execFileSync } = require('child_process')
+
+function sign(target, entitlementsPath) {
+  execFileSync(
+    'codesign',
+    [
+      '--force',
+      '--sign', '-',
+      '--entitlements', entitlementsPath,
+      '--options', 'runtime',
+      '--timestamp=none',
+      target
+    ],
+    { stdio: 'inherit' }
+  )
+}
+
+// Re-sign an Electron .app from inside-out so every binary shares the same
+// ad-hoc Team ID. Using --deep is NOT sufficient on macOS 14+ (Sonoma) and
+// macOS 26 (Tahoe) — it leaves inner frameworks with their original Apple/
+// Electron Team ID while the outer binary gets a blank ad-hoc Team ID,
+// causing a "different Team IDs" crash at launch.
+function signAppInsideOut(appPath, entitlementsPath) {
+  const frameworksDir = path.join(appPath, 'Contents', 'Frameworks')
+  const helpersDir = path.join(appPath, 'Contents', 'MacOS')
+
+  // 1. Sign all nested .framework bundles (innermost first)
+  if (fs.existsSync(frameworksDir)) {
+    const entries = fs.readdirSync(frameworksDir)
+    for (const entry of entries) {
+      const fullPath = path.join(frameworksDir, entry)
+      if (entry.endsWith('.framework')) {
+        // Sign the Versions/A/<Framework> binary directly first, then the bundle
+        const versionsA = path.join(fullPath, 'Versions', 'A', entry.replace('.framework', ''))
+        if (fs.existsSync(versionsA)) {
+          console.log(`[afterPack] Signing framework binary: ${versionsA}`)
+          sign(versionsA, entitlementsPath)
+        }
+        console.log(`[afterPack] Signing framework: ${fullPath}`)
+        sign(fullPath, entitlementsPath)
+      } else if (entry.endsWith('.app')) {
+        // Helper apps (e.g. GPU Process, Renderer, etc.)
+        console.log(`[afterPack] Signing helper app: ${fullPath}`)
+        sign(fullPath, entitlementsPath)
+      }
+    }
+  }
+
+  // 2. Sign all standalone binaries in MacOS/
+  if (fs.existsSync(helpersDir)) {
+    for (const bin of fs.readdirSync(helpersDir)) {
+      const binPath = path.join(helpersDir, bin)
+      if (fs.statSync(binPath).isFile()) {
+        console.log(`[afterPack] Signing binary: ${binPath}`)
+        sign(binPath, entitlementsPath)
+      }
+    }
+  }
+
+  // 3. Sign the .app bundle itself last
+  console.log(`[afterPack] Signing app bundle: ${appPath}`)
+  sign(appPath, entitlementsPath)
+}
 
 exports.default = async function (context) {
   if (context.electronPlatformName === 'win32') {
@@ -33,17 +96,11 @@ exports.default = async function (context) {
       console.warn('[afterPack] The app will still work — Task Manager will show default EXE info.')
     }
   } else if (context.electronPlatformName === 'darwin') {
-    // Ad-hoc sign the .app bundle before electron-builder packages it into the DMG.
-    // This means the final DMG ships with a signed app — users won't need to run
-    // a manual codesign command after installing.
     const appName = context.packager.appInfo.productFilename + '.app'
     const appPath = path.join(context.appOutDir, appName)
-    console.log(`[afterPack] Ad-hoc codesigning: ${appPath}`)
-    execFileSync(
-      'codesign',
-      ['--deep', '--force', '--sign', '-', appPath],
-      { stdio: 'inherit' }
-    )
+    const entitlementsPath = path.join(__dirname, 'entitlements.mac.plist')
+    console.log(`[afterPack] Starting inside-out ad-hoc codesign for: ${appPath}`)
+    signAppInsideOut(appPath, entitlementsPath)
     console.log('[afterPack] Ad-hoc codesign complete')
   }
 }

@@ -78,6 +78,7 @@ const darwin: PlatformBehavior = {
 
   bindContentProtectionEvents(win, reapply) {
     win.on('focus', reapply)
+    win.on('blur', reapply)   // re-apply right before Zoom/Teams starts capturing
     win.on('show', reapply)
     win.on('move', reapply)
     win.on('resize', reapply)

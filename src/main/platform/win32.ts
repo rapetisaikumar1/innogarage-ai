@@ -25,8 +25,10 @@ const win32: PlatformBehavior = {
 
   bindContentProtectionEvents(win, reapply) {
     // WDA_EXCLUDEFROMCAPTURE can be reset by the OS after ANY window state
-    // change. Re-apply on every such event.
+    // change. Re-apply on every such event. Also re-apply on blur so that
+    // Teams/Zoom pick up the exclusion when their capture pipeline restarts.
     win.on('focus', reapply)
+    win.on('blur', reapply)
     win.on('show', reapply)
     win.on('move', reapply)
     win.on('resize', reapply)

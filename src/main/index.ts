@@ -12,10 +12,13 @@ platform.earlySetup()
 let mainWindow: BrowserWindow | null = null
 
 // ── Content protection state ────────────────────────────────────────────────
-const STEALTH_REAPPLY_DELAYS_MS = [0, 120, 500]
+// Extended delays cover Zoom/Teams which initialize their capture pipeline
+// later than browser-based tools like Google Meet
+const STEALTH_REAPPLY_DELAYS_MS = [0, 120, 500, 1200, 2500, 5000]
 let desiredContentProtection = false
 let stealthModeEnabled = false
 let cpTimers: ReturnType<typeof setTimeout>[] = []
+let stealthInterval: ReturnType<typeof setInterval> | null = null
 
 function applyDesiredContentProtection(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
@@ -54,6 +57,12 @@ function setStealthMode(enabled: boolean): void {
 
   clearContentProtectionTimers()
 
+  // Clear any existing periodic re-apply interval
+  if (stealthInterval) {
+    clearInterval(stealthInterval)
+    stealthInterval = null
+  }
+
   if (enabled) {
     stealthModeEnabled = true
     platform.applyContentProtection(mainWindow, true)
@@ -61,6 +70,16 @@ function setStealthMode(enabled: boolean): void {
     platform.setAlwaysOnTop(mainWindow, true)
     platform.applyOverlayMode(mainWindow, true)
     reapplyContentProtection()
+
+    // Periodic re-apply every 3 s while stealth is active.
+    // Zoom and Teams can reset NSWindowSharingNone when their capture
+    // pipeline restarts (e.g. joining a call, switching screens).
+    stealthInterval = setInterval(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) return
+      platform.applyContentProtection(mainWindow, true)
+    }, 3000)
+
+    mainWindow.webContents.send('window:stealthModeChanged', true)
     return
   }
 
@@ -69,6 +88,7 @@ function setStealthMode(enabled: boolean): void {
   platform.setAlwaysOnTop(mainWindow, false)
   platform.setSkipTaskbar(mainWindow, false)
   platform.applyContentProtection(mainWindow, false)
+  mainWindow.webContents.send('window:stealthModeChanged', false)
 }
 
 // ── Window creation ─────────────────────────────────────────────────────────
@@ -100,6 +120,10 @@ function createWindow(): void {
       desiredContentProtection = false
       stealthModeEnabled = false
       clearContentProtectionTimers()
+      if (stealthInterval) {
+        clearInterval(stealthInterval)
+        stealthInterval = null
+      }
     }
   })
 
@@ -150,7 +174,11 @@ ipcMain.handle('audio:get-desktop-source-id', async () => {
   for (let i = 0; i < maxAttempts; i++) {
     try {
       const sources = await desktopCapturer.getSources({ types: ['screen'] })
-      console.log(`[desktopCapturer] attempt ${i + 1}: sources found:`, sources.length, sources.map(s => s.name))
+      console.log(
+        `[desktopCapturer] attempt ${i + 1}: sources found:`,
+        sources.length,
+        sources.map((s) => s.name)
+      )
       if (sources.length > 0) {
         return sources[0].id
       }
@@ -158,10 +186,39 @@ ipcMain.handle('audio:get-desktop-source-id', async () => {
       console.error(`[desktopCapturer] attempt ${i + 1} error:`, err)
     }
     if (i < maxAttempts - 1) {
-      await new Promise(r => setTimeout(r, 500))
+      await new Promise((r) => setTimeout(r, 500))
     }
   }
   return null
+})
+
+// Trigger macOS TCC screen-recording prompt AND return whether permission is
+// actually working. We use getSources() as the source of truth — if it returns
+// sources the permission is granted regardless of what getMediaAccessStatus says.
+// getMediaAccessStatus('screen') is unreliable on macOS 14+ / macOS 26 (Tahoe):
+// it can return 'denied' even when the System Settings toggle is ON.
+ipcMain.handle('audio:trigger-screen-permission', async () => {
+  let sourceId: string | null = null
+  // Retry a few times — there can be a race right after the user flips the toggle
+  for (let i = 0; i < 4; i++) {
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen'] })
+      console.log(`[triggerScreenPerm] attempt ${i + 1}: sources=${sources.length}`)
+      if (sources.length > 0) {
+        sourceId = sources[0].id
+        break
+      }
+    } catch (err) {
+      console.warn(`[triggerScreenPerm] attempt ${i + 1} error:`, err)
+    }
+    if (i < 3) await new Promise((r) => setTimeout(r, 600))
+  }
+  return {
+    granted: sourceId !== null,
+    sourceId,
+    // also include raw status for diagnostics
+    status: platform.getScreenPermissionStatus()
+  }
 })
 
 // Returns current screen recording permission status
@@ -179,7 +236,8 @@ ipcMain.handle('audio:open-screen-settings', () => {
 function injectBackButton(win: BrowserWindow): void {
   win.webContents.on('did-finish-load', () => {
     win.webContents
-      .executeJavaScript(`
+      .executeJavaScript(
+        `
         (function () {
           if (document.getElementById('__ig_back_btn')) return;
           var btn = document.createElement('button');
@@ -207,23 +265,25 @@ function injectBackButton(win: BrowserWindow): void {
           btn.onclick = function () { window.close(); };
           document.body.appendChild(btn);
         })();
-      `)
+      `
+      )
       .catch(() => undefined)
   })
 }
 
 type GoogleAuthResult =
-  | { type: 'login'; token: string; user: { id: string; name: string; email: string; phone: string | null } }
+  | {
+      type: 'login'
+      token: string
+      user: { id: string; name: string; email: string; phone: string | null }
+    }
   | { type: 'verify'; email: string; name: string; googleId: string }
 
 const RAILWAY_CALLBACK = 'https://innogarage-ai-production.up.railway.app/auth/google/callback'
 
 // Shared helper: intercepts Google OAuth callback in a modal window.
 // Handles both will-redirect (server 302) and did-navigate (window loads the URL).
-function interceptGoogleCallback(
-  authWindow: BrowserWindow,
-  onUrl: (url: string) => void
-): void {
+function interceptGoogleCallback(authWindow: BrowserWindow, onUrl: (url: string) => void): void {
   authWindow.webContents.on('will-redirect', (_event, redirectUrl) => {
     if (redirectUrl.startsWith(RAILWAY_CALLBACK)) {
       _event.preventDefault()
@@ -238,56 +298,62 @@ function interceptGoogleCallback(
 }
 
 // In-app Google OAuth — opens a modal BrowserWindow, intercepts callback
-ipcMain.handle(
-  'auth:google',
-  (): Promise<GoogleAuthResult> => {
-    return new Promise((resolve, reject) => {
-      let settled = false
-      const settle = (fn: () => void): void => {
-        if (settled) return
-        settled = true
-        fn()
+ipcMain.handle('auth:google', (): Promise<GoogleAuthResult> => {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const settle = (fn: () => void): void => {
+      if (settled) return
+      settled = true
+      fn()
+    }
+
+    void (async (): Promise<void> => {
+      try {
+        const urlRes = await net.fetch(
+          'https://innogarage-ai-production.up.railway.app/auth/google/url'
+        )
+        const { url } = (await urlRes.json()) as { url: string }
+
+        const authWindow = new BrowserWindow({
+          width: 520,
+          height: 680,
+          parent: mainWindow ?? undefined,
+          modal: true,
+          show: false,
+          autoHideMenuBar: true,
+          webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true }
+        })
+
+        authWindow.once('ready-to-show', () => authWindow.show())
+        authWindow.on('closed', () => settle(() => reject(new Error('Authentication cancelled'))))
+        injectBackButton(authWindow)
+
+        interceptGoogleCallback(authWindow, (callbackUrl) => {
+          net
+            .fetch(callbackUrl)
+            .then(async (r) => {
+              const data = await r.json()
+              if (!r.ok)
+                throw new Error((data as { error?: string }).error || 'Google sign-in failed')
+              return data
+            })
+            .then((data) => {
+              settle(() => resolve(data as GoogleAuthResult))
+              authWindow.destroy()
+            })
+            .catch((err) => {
+              settle(() => reject(err))
+              authWindow.destroy()
+            })
+        })
+
+        authWindow.loadURL(url)
+      } catch (err) {
+        settle(() => reject(err))
       }
-
-      void (async (): Promise<void> => {
-        try {
-          const urlRes = await net.fetch('https://innogarage-ai-production.up.railway.app/auth/google/url')
-          const { url } = (await urlRes.json()) as { url: string }
-
-          const authWindow = new BrowserWindow({
-            width: 520,
-            height: 680,
-            parent: mainWindow ?? undefined,
-            modal: true,
-            show: false,
-            autoHideMenuBar: true,
-            webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true }
-          })
-
-          authWindow.once('ready-to-show', () => authWindow.show())
-          authWindow.on('closed', () => settle(() => reject(new Error('Authentication cancelled'))))
-          injectBackButton(authWindow)
-
-          interceptGoogleCallback(authWindow, (callbackUrl) => {
-            net
-              .fetch(callbackUrl)
-              .then(async (r) => {
-                const data = await r.json()
-                if (!r.ok) throw new Error((data as { error?: string }).error || 'Google sign-in failed')
-                return data
-              })
-              .then((data) => { settle(() => resolve(data as GoogleAuthResult)); authWindow.destroy() })
-              .catch((err) => { settle(() => reject(err)); authWindow.destroy() })
-          })
-
-          authWindow.loadURL(url)
-        } catch (err) {
-          settle(() => reject(err))
-        }
-      })()
-    })
-  }
-)
+    })()
+  })
+})
 
 // In-app Google identity verify — opens Google sign-in, returns {email, googleId, name} WITHOUT touching DB
 ipcMain.handle(
@@ -304,7 +370,9 @@ ipcMain.handle(
       void (async (): Promise<void> => {
         try {
           const hintParam = loginHint ? `?hint=${encodeURIComponent(loginHint)}` : ''
-          const urlRes = await net.fetch(`https://innogarage-ai-production.up.railway.app/auth/google/url${hintParam}`)
+          const urlRes = await net.fetch(
+            `https://innogarage-ai-production.up.railway.app/auth/google/url${hintParam}`
+          )
           const { url } = (await urlRes.json()) as { url: string }
 
           const authWindow = new BrowserWindow({
@@ -322,12 +390,21 @@ ipcMain.handle(
           injectBackButton(authWindow)
 
           interceptGoogleCallback(authWindow, (callbackUrl) => {
-            const identityUrl = callbackUrl.replace('/auth/google/callback', '/auth/google/identity')
+            const identityUrl = callbackUrl.replace(
+              '/auth/google/callback',
+              '/auth/google/identity'
+            )
             net
               .fetch(identityUrl)
               .then((r) => r.json())
-              .then((data) => { settle(() => resolve(data as { email: string; googleId: string; name: string })); authWindow.destroy() })
-              .catch((err) => { settle(() => reject(err)); authWindow.destroy() })
+              .then((data) => {
+                settle(() => resolve(data as { email: string; googleId: string; name: string }))
+                authWindow.destroy()
+              })
+              .catch((err) => {
+                settle(() => reject(err))
+                authWindow.destroy()
+              })
           })
 
           authWindow.loadURL(url)
@@ -368,5 +445,9 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   clearContentProtectionTimers()
+  if (stealthInterval) {
+    clearInterval(stealthInterval)
+    stealthInterval = null
+  }
   platform.cleanup()
 })
