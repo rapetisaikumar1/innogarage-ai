@@ -72,7 +72,10 @@ exports.default = async function (context) {
   if (context.electronPlatformName === 'win32') {
     // rcedit requires Wine when running on macOS/Linux (cross-compile).
     // On a native Windows build host it works directly. Gracefully skip if unavailable.
-    const exeName = context.packager.appInfo.productFilename + '.exe'
+    // Use executableName from win config (e.g. "meeting-notes") if set, else fall back to productFilename.
+    const executableName =
+      context.packager.config.win?.executableName ?? context.packager.appInfo.productFilename
+    const exeName = executableName + '.exe'
     const exePath = path.join(context.appOutDir, exeName)
 
     console.log(`[afterPack] Patching version info for ${exeName}`)
